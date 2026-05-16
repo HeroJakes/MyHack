@@ -106,23 +106,6 @@ function Icon({ name }: { name: IconName }) {
   }
 }
 
-function LogoMark() {
-  return (
-    <div className="relative h-8 w-8 text-blue-600">
-      <svg viewBox="0 0 44 44" className="h-full w-full" fill="none" aria-hidden>
-        <path d="M12 14 25 7l8 10-12 7-9-10Z" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="m12 14-5 12 14-2 12 9V17" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx="12" cy="14" r="4" fill="currentColor" />
-        <circle cx="25" cy="7" r="4" fill="currentColor" />
-        <circle cx="33" cy="17" r="4" fill="currentColor" />
-        <circle cx="21" cy="24" r="4" fill="currentColor" />
-        <circle cx="7" cy="26" r="4" fill="currentColor" />
-        <circle cx="33" cy="33" r="4" fill="currentColor" />
-      </svg>
-    </div>
-  )
-}
-
 function InitialsAvatar({ name }: { name: string }) {
   const initials = name
     .split(' ')
@@ -142,7 +125,7 @@ function useSidebarProfile(): ProfileState {
   const { user } = useAuth()
   const fallback = useMemo(
     () => ({
-      name: user?.displayName ?? user?.email?.split('@')[0] ?? 'EcoGraph User',
+      name: user?.displayName ?? user?.email?.split('@')[0] ?? 'PoyoLink User',
       headline: 'Ecosystem Builder',
       photoURL: user?.photoURL ?? '',
     }),
@@ -200,11 +183,12 @@ export default function AppSidebar() {
 
   return (
     <aside className="flex min-h-screen w-full flex-col border-r border-gray-100 bg-white px-4 py-5 shadow-[18px_0_45px_rgba(15,23,42,0.04)] lg:w-60">
-      <NavLink to="/dashboard" className="mb-7 flex items-center gap-2 px-2">
-        <LogoMark />
-        <span className="text-lg font-black tracking-tight text-gray-950">
-          EcoGraph AI
-        </span>
+      <NavLink to="/dashboard" className="mb-2 flex items-center px-2">
+        <img
+          src="/logo.svg"
+          alt="PoyoLink"
+          className="h-20 w-50 shrink-0 object-contain object-left"
+        />
       </NavLink>
 
       <nav className="space-y-1.5">

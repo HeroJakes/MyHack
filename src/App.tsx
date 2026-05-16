@@ -25,7 +25,7 @@ function FullScreenLoader() {
     <div className="flex h-screen items-center justify-center bg-[#f6f6f7]">
       <div className="flex flex-col items-center gap-3">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
-        <p className="text-sm text-gray-500">Loading EcoGraph AI...</p>
+        <p className="text-sm text-gray-500">Loading PoyoLink...</p>
       </div>
     </div>
   )

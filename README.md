@@ -1,6 +1,6 @@
-# EcoGraph AI
+# PoyoLink
 
-EcoGraph AI is a React + Vite + Firebase app for building campaigns, inviting ecosystem participants, and managing AI-powered relationship linkages.
+PoyoLink is a React + Vite + Firebase app for building campaigns, inviting ecosystem participants, and managing AI-powered relationship linkages.
 
 ## Tech Stack
 

@@ -1,6 +1,6 @@
 {
   "name": "functions",
-  "description": "EcoGraph AI — Firebase Cloud Functions",
+  "description": "PoyoLink — Firebase Cloud Functions",
   "private": true,
   "main": "lib/index.js",
   "engines": {

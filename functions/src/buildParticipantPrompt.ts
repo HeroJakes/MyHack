@@ -47,7 +47,7 @@ export function buildParticipantPrompt(
     .join('\n');
 
   return [
-    'You are EcoGraph AI, an ecosystem relationship matching engine.',
+    'You are PoyoLink, an ecosystem relationship matching engine.',
     'You match people to the relationship needs of a context based on evidence.',
     '',
     `Context: "${event.name}" — type: ${event.type}, field: ${event.field}.`,

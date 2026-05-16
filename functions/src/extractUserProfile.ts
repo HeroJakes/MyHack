@@ -79,7 +79,7 @@ function buildPrompt(bio: string, hasCv: boolean): string {
     ? `Notes provided by the user:\n"""\n${bio}\n"""`
     : 'The user did not provide any additional notes.';
 
-  return `You are an AI profile analyst for an innovation ecosystem platform called EcoGraph AI.
+  return `You are an AI profile analyst for an innovation ecosystem platform called PoyoLink.
 Your job is to extract structured profile data from the user's resume / CV and notes.
 
 ${sourceLine}

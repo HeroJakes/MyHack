@@ -1,5 +1,5 @@
 /**
- * EcoGraph AI — Cloud Functions entry point.
+ * PoyoLink — Cloud Functions entry point.
  *
  * Initializes the Admin SDK once, then re-exports every callable function.
  * All functions run in region asia-southeast1.
