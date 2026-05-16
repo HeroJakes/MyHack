@@ -11,7 +11,8 @@
       "Bash(grep -vE \"functions[\\\\\\\\\\\\\\\\/]lib\")",
       "PowerShell(npx tsc --noEmit -p functions/tsconfig.json)",
       "PowerShell(npx eslint src/pages/CreateContext.tsx src/hooks/useCreateContext.ts src/components/RoleRequirementForm.tsx src/App.tsx)",
-      "PowerShell(npx eslint src 2>&1)"
+      "PowerShell(npx eslint src 2>&1)",
+      "Bash(npm ls *)"
     ]
   }
 }

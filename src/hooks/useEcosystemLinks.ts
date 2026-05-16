@@ -1,85 +1,168 @@
 /**
- * Real-time listener for `ecosystemLinks`.
+ * useEcosystemLinks — live `ecosystemLinks` joined with `users`.
  *
- * The security rules expose a link to its two actors only, so this hook runs
- * two listeners — one where the user is the source, one where they are the
- * target — and merges the results, deduped by id and sorted newest-first.
+ * The `ecosystemLinks` documents store only actor *ids*, so this hook also
+ * listens to the `users` collection and resolves each id to a name, role and
+ * photo. The result is a `ResolvedEcosystemLink[]` the UI can render directly.
+ *
+ * Reading every link requires the relaxed `ecosystemLinks` read rule (any
+ * authenticated user) — see `firestore.rules`.
  */
 import { useEffect, useMemo, useState } from 'react'
-import { collection, onSnapshot, query, where } from 'firebase/firestore'
+import { collection, onSnapshot, orderBy, query } from 'firebase/firestore'
 import { db } from '../lib/firebase'
-import { useAuth } from '../contexts/AuthContext'
-import type { EcosystemLink } from '../types'
+import type { EcosystemLinkStatus, RelationshipType } from '../types'
 
-function toMillis(value: unknown): number {
-  if (!value) return 0
-  const ts = value as { toMillis?: () => number; seconds?: number }
-  if (typeof ts.toMillis === 'function') return ts.toMillis()
-  if (typeof ts.seconds === 'number') return ts.seconds * 1000
-  return 0
+/** An ecosystem link with its actor ids resolved to display fields. */
+export interface ResolvedEcosystemLink {
+  id: string
+  sourceUserId: string
+  sourceUserName: string
+  sourceUserRole: string
+  sourceUserPhoto: string
+  targetUserId: string
+  targetUserName: string
+  targetUserRole: string
+  targetUserPhoto: string
+  contextId: string
+  contextName: string
+  contextType: string
+  field: string
+  sourceType: string
+  targetType: string
+  relationshipType: RelationshipType
+  assignedRole: string
+  aiReason: string
+  confidence: number
+  riskFlags: string[]
+  status: EcosystemLinkStatus
+  outcomeScore?: number
+  feedbackSummary?: string
+  reusableTags: string[]
+  createdFromInviteId: string
+  createdAt: Date
+  updatedAt: Date
+}
+
+interface UserLite {
+  name: string
+  role: string
+  photo: string
+}
+
+type RawDoc = { id: string } & Record<string, unknown>
+
+/** Coerces a Firestore Timestamp (or plain value) to a JS Date. */
+function toDate(value: unknown): Date {
+  if (!value) return new Date()
+  const ts = value as { toDate?: () => Date; seconds?: number }
+  if (typeof ts.toDate === 'function') return ts.toDate()
+  if (typeof ts.seconds === 'number') return new Date(ts.seconds * 1000)
+  return new Date()
+}
+
+function asString(value: unknown, fallback = ''): string {
+  return typeof value === 'string' ? value : fallback
+}
+
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : []
 }
 
 export function useEcosystemLinks() {
-  const { user } = useAuth()
-  const [asSource, setAsSource] = useState<EcosystemLink[]>([])
-  const [asTarget, setAsTarget] = useState<EcosystemLink[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const [rawLinks, setRawLinks] = useState<RawDoc[]>([])
+  const [users, setUsers] = useState<Map<string, UserLite>>(new Map())
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!user) {
-      setAsSource([])
-      setAsTarget([])
-      setLoading(false)
-      return
-    }
+    const linksQuery = query(
+      collection(db, 'ecosystemLinks'),
+      orderBy('createdAt', 'desc'),
+    )
 
-    setLoading(true)
-    setError('')
-    const linksCol = collection(db, 'ecosystemLinks')
-
-    const mapDocs = (snap: { docs: Array<{ id: string; data: () => unknown }> }) =>
-      snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) }) as EcosystemLink)
-
-    const unsubSource = onSnapshot(
-      query(linksCol, where('sourceUserId', '==', user.uid)),
+    const unsubLinks = onSnapshot(
+      linksQuery,
       (snap) => {
-        setAsSource(mapDocs(snap))
-        setLoading(false)
+        setRawLinks(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
+        setError(null)
+        setIsLoading(false)
       },
       (err) => {
+        console.error('useEcosystemLinks (links) error:', err)
         setError(err.message)
-        setLoading(false)
+        setIsLoading(false)
       },
     )
 
-    const unsubTarget = onSnapshot(
-      query(linksCol, where('targetUserId', '==', user.uid)),
+    const unsubUsers = onSnapshot(
+      collection(db, 'users'),
       (snap) => {
-        setAsTarget(mapDocs(snap))
-        setLoading(false)
+        const map = new Map<string, UserLite>()
+        snap.docs.forEach((d) => {
+          const data = d.data()
+          map.set(d.id, {
+            name: asString(data.name, d.id),
+            role: asString(data.headline),
+            photo: asString(data.photoURL),
+          })
+        })
+        setUsers(map)
       },
       (err) => {
-        setError(err.message)
-        setLoading(false)
+        // Non-fatal: links still render with ids if user resolution fails.
+        console.error('useEcosystemLinks (users) error:', err)
       },
     )
 
     return () => {
-      unsubSource()
-      unsubTarget()
+      unsubLinks()
+      unsubUsers()
     }
-  }, [user])
+  }, [])
 
-  const links = useMemo(() => {
-    const byId = new Map<string, EcosystemLink>()
-    for (const link of [...asSource, ...asTarget]) {
-      byId.set(link.id, link)
-    }
-    return [...byId.values()].sort(
-      (a, b) => toMillis(b.createdAt) - toMillis(a.createdAt),
-    )
-  }, [asSource, asTarget])
+  const links = useMemo<ResolvedEcosystemLink[]>(() => {
+    return rawLinks.map((raw) => {
+      const sourceUserId = asString(raw.sourceUserId)
+      const targetUserId = asString(raw.targetUserId)
+      const sourceType = asString(raw.sourceType)
+      const targetType = asString(raw.targetType)
+      const sourceUser = users.get(sourceUserId)
+      const targetUser = users.get(targetUserId)
 
-  return { links, loading, error }
+      return {
+        id: raw.id,
+        sourceUserId,
+        sourceUserName: sourceUser?.name ?? sourceUserId,
+        sourceUserRole: sourceUser?.role || sourceType,
+        sourceUserPhoto: sourceUser?.photo ?? '',
+        targetUserId,
+        targetUserName: targetUser?.name ?? targetUserId,
+        targetUserRole: targetUser?.role || targetType,
+        targetUserPhoto: targetUser?.photo ?? '',
+        contextId: asString(raw.contextId),
+        contextName: asString(raw.contextName),
+        contextType: asString(raw.contextType),
+        field: asString(raw.field),
+        sourceType,
+        targetType,
+        relationshipType: asString(raw.relationshipType, 'mentor_match') as RelationshipType,
+        assignedRole: asString(raw.assignedRole),
+        aiReason: asString(raw.aiReason),
+        confidence: typeof raw.confidence === 'number' ? raw.confidence : 0,
+        riskFlags: asStringArray(raw.riskFlags),
+        status: asString(raw.status, 'suggested') as EcosystemLinkStatus,
+        outcomeScore:
+          typeof raw.outcomeScore === 'number' ? raw.outcomeScore : undefined,
+        feedbackSummary:
+          typeof raw.feedbackSummary === 'string' ? raw.feedbackSummary : undefined,
+        reusableTags: asStringArray(raw.reusableTags),
+        createdFromInviteId: asString(raw.createdFromInviteId),
+        createdAt: toDate(raw.createdAt),
+        updatedAt: toDate(raw.updatedAt),
+      }
+    })
+  }, [rawLinks, users])
+
+  return { links, isLoading, error }
 }

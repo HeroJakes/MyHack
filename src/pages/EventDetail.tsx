@@ -20,8 +20,17 @@ import { useGenerateParticipants } from '../hooks/useGenerateParticipants'
 import { useSendInvites } from '../hooks/useSendInvites'
 import { useEcosystemLinks } from '../hooks/useEcosystemLinks'
 import ParticipantCard from '../components/ParticipantCard'
-import EcosystemLinkCard from '../components/EcosystemLinkCard'
 import type { EcoEvent, ParticipantSuggestion } from '../types'
+
+/** Badge tone per ecosystem-link status, used by the link-tracking section. */
+const LINK_STATUS_BADGE: Record<string, string> = {
+  active: 'bg-green-100 text-green-800 border-green-200',
+  completed: 'bg-gray-100 text-gray-600 border-gray-200',
+  invited: 'bg-blue-100 text-blue-700 border-blue-200',
+  suggested: 'bg-gray-100 text-gray-600 border-gray-200',
+  declined: 'bg-red-100 text-red-700 border-red-200',
+  archived: 'bg-gray-100 text-gray-500 border-gray-200',
+}
 
 export default function EventDetail() {
   const { eventId } = useParams<{ eventId: string }>()
@@ -284,7 +293,46 @@ export default function EventDetail() {
         ) : (
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {contextLinks.map((link) => (
-              <EcosystemLinkCard key={link.id} link={link} />
+              <article
+                key={link.id}
+                className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span
+                    className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold capitalize ${
+                      LINK_STATUS_BADGE[link.status] ??
+                      LINK_STATUS_BADGE.suggested
+                    }`}
+                  >
+                    {link.status}
+                  </span>
+                  <span className="text-xs font-semibold text-gray-500">
+                    {link.confidence}% confidence
+                  </span>
+                </div>
+                <p className="mt-3 text-sm font-medium text-gray-800">
+                  {link.sourceUserId}{' '}
+                  <span className="text-gray-400">→</span> {link.targetUserId}
+                </p>
+                <p className="mt-1 text-xs text-gray-500">
+                  {link.relationshipType} · {link.contextName}
+                </p>
+                {link.aiReason && (
+                  <p className="mt-2 text-sm text-gray-600">{link.aiReason}</p>
+                )}
+                {link.reusableTags.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {link.reusableTags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600"
+                      >
+                        #{tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </article>
             ))}
           </div>
         )}
