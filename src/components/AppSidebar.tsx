@@ -142,7 +142,11 @@ function useSidebarProfile(): ProfileState {
       setProfile({
         name: data?.name || fallback.name,
         headline: data?.headline || 'Ecosystem Builder',
-        photoURL: data?.photoURL || fallback.photoURL,
+        photoURL:
+          data?.profileImageBase64 ||
+          data?.photoURL ||
+          data?.image ||
+          fallback.photoURL,
       })
     })
   }, [fallback, user])
