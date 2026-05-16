@@ -21,7 +21,7 @@ import type { Invite } from '../types'
 type Tab = 'events' | 'invites' | 'graph'
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'events', label: 'My Events' },
+  { id: 'events', label: 'My Contexts' },
   { id: 'invites', label: 'My Invites' },
   { id: 'graph', label: 'Relationship Graph' },
 ]
@@ -93,7 +93,7 @@ export default function Dashboard() {
           to="/events/new"
           className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
         >
-          + Create Event
+          + Create Context
         </Link>
       </div>
 

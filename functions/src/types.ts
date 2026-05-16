@@ -91,6 +91,41 @@ export interface Event {
   eventDate?: TimestampValue;
 }
 
+/** The five context types a generalized ecosystem context can take. */
+export type ContextType =
+  | 'Event'
+  | 'Programme'
+  | 'Initiative'
+  | 'Cohort'
+  | 'CountryExpansion';
+
+/** Whether a context happens in person, online, or both. */
+export type LocationType = 'Physical' | 'Virtual' | 'Hybrid';
+
+/**
+ * An EcosystemContext is the generalized successor to `Event`. It is stored
+ * at `ecosystemContexts/{contextId}` and carries `contextType` so every
+ * downstream feature keyed on contextId/contextType stays backward compatible.
+ */
+export interface EcosystemContext {
+  id: string;
+  name: string;
+  contextType: ContextType;
+  field: string;
+  description: string;
+  locationType: LocationType;
+  location: string;
+  imageUrl?: string;
+  startDate: Timestamp;
+  endDate: Timestamp;
+  status: EventStatus;
+  targetOutcomes: string[];
+  relationshipNeeds: RelationshipNeed[];
+  createdBy: string;
+  createdAt: TimestampValue;
+  updatedAt: TimestampValue;
+}
+
 /** An AI-ranked candidate for one of a context's relationship needs. */
 export interface ParticipantSuggestion {
   id: string;

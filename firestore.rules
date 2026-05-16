@@ -51,12 +51,18 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Ecosystem links: visible to the two linked actors. Mutated by backend only.
+    // Ecosystem links: visible to the two linked actors and to the organizer
+    // (createdBy) of the context the link belongs to. Mutated by backend only.
     match /ecosystemLinks/{linkId} {
-      allow read: if isSignedIn()
-        && (resource.data.sourceUserId == request.auth.uid
-            || resource.data.targetUserId == request.auth.uid);
-      allow create, update, delete: if false;
+      allow read: if request.auth != null
+        && (
+          request.auth.uid == resource.data.sourceUserId
+          || request.auth.uid == resource.data.targetUserId
+          || request.auth.uid == get(/databases/$(database)/documents/ecosystemContexts/$(resource.data.contextId)).data.createdBy
+          || request.auth.uid == get(/databases/$(database)/documents/events/$(resource.data.contextId)).data.createdBy
+        );
+      allow create: if false;
+      allow update: if false;
     }
   }
 }

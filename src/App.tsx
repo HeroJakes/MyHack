@@ -8,7 +8,9 @@ import AppSidebar from './components/AppSidebar'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import CreateEvent from './pages/CreateEvent'
+import CreateContext from './pages/CreateContext'
 import EventDetail from './pages/EventDetail'
+import ContextDetail from './pages/ContextDetail'
 import InviteView from './pages/InviteView'
 import RelationshipGraph from './pages/RelationshipGraph'
 import MyContexts from './pages/MyContexts'
@@ -118,6 +120,22 @@ export default function App() {
         element={
           <PrivateRoute>
             <MyContexts />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/contexts/:contextId"
+        element={
+          <PrivateRoute>
+            <ContextDetail />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/create-context"
+        element={
+          <PrivateRoute>
+            <CreateContext />
           </PrivateRoute>
         }
       />

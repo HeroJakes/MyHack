@@ -569,10 +569,20 @@ export const generateParticipants = onCall(
       db.collection('invites').where('contextId', '==', contextId).get(),
     ]);
 
-    if (!eventSnap.exists) {
+    // A context can live in `events` (createEvent) or `ecosystemContexts`
+    // (createContext). Fall back to ecosystemContexts when `events` has no
+    // matching document, and use whichever collection holds the context.
+    let contextSnap = eventSnap;
+    if (!contextSnap.exists) {
+      contextSnap = await db
+        .collection('ecosystemContexts')
+        .doc(contextId)
+        .get();
+    }
+    if (!contextSnap.exists) {
       throw new HttpsError('not-found', `Event ${contextId} was not found.`);
     }
-    const event = { id: eventSnap.id, ...eventSnap.data() } as Event;
+    const event = { id: contextSnap.id, ...contextSnap.data() } as Event;
     if (event.createdBy !== uid) {
       throw new HttpsError(
         'permission-denied',

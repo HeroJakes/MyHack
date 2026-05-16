@@ -28,7 +28,7 @@ type ProfileState = {
 
 const baseItems: SidebarItem[] = [
   { label: 'Dashboard', to: '/dashboard', icon: 'dashboard', end: true },
-  { label: 'My Campaigns', to: '/contexts', icon: 'calendar' },
+  { label: 'My Contexts', to: '/contexts', icon: 'calendar' },
   { label: 'My Invites', to: '/invites', icon: 'mail' },
   { label: 'Linkages', to: '/ecosystem-links', icon: 'links' },
   { label: 'Ecosystem Profile', to: '/people', icon: 'people' },

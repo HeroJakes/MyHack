@@ -10,6 +10,7 @@ initializeApp();
 
 export { extractUserProfile } from './extractUserProfile';
 export { createEvent } from './createEvent';
+export { createContext } from './createContext';
 export { suggestRelationshipNeeds } from './suggestRelationshipNeeds';
 export { generateParticipants } from './generateParticipants';
 export { sendInvites } from './sendInvites';

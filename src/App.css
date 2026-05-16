@@ -3,21 +3,3 @@
 #root {
   min-height: 100%;
 }
-
-/*
- * Transform-based drawer animation.
- * Drawers must never use position: fixed — they slide via transform on an
- * absolutely positioned element so they stay scoped to their parent.
- */
-.eco-drawer {
-  transition: transform 200ms ease-in-out;
-  will-change: transform;
-}
-
-.eco-drawer--closed {
-  transform: translateX(100%);
-}
-
-.eco-drawer--open {
-  transform: translateX(0);
-}

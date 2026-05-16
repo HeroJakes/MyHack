@@ -71,8 +71,8 @@ export function buildParticipantPrompt(
     quotaLines,
     '',
     'After satisfying all quotas, you MAY add up to 2 bonus candidates. Bonus ' +
-      'candidates must have confidence >= 60 and must be marked with "bonus": ' +
-      'true in the JSON. Do not add bonus candidates if quotas cannot be filled.',
+      'candidates must have confidence of at least 60 and must be flagged as ' +
+      'bonus. Do not add bonus candidates if quotas cannot be filled.',
     '',
     'CANDIDATE PEOPLE:',
     candidateLines || '(no candidates supplied)',
@@ -93,20 +93,15 @@ export function buildParticipantPrompt(
       'signals. Candidates who match more keywords should rank higher for ' +
       'that role. Mention matched keywords in the reason field where relevant.',
     '',
-    'Return ONLY raw JSON of this exact shape:',
-    '{',
-    '  "participants": [',
-    '    {',
-    '      "userId": "string",',
-    '      "suggestedRole": "Mentor|Partner|Startup/Company|Service Provider|Programme Admin",',
-    '      "relationshipType": "mentor_match|partner_linkage|service_support|programme_fit|participant_orchestration",',
-    '      "reason": "string",',
-    '      "confidence": 0,',
-    '      "riskFlags": ["string"],',
-    '      "suggestedNextAction": "string",',
-    '      "bonus": false',
-    '    }',
-    '  ]',
-    '}',
+    'For every candidate you choose, describe these details:',
+    '- userId: the id of the candidate, taken from the candidate list above.',
+    '- suggestedRole: one of the need roles listed above.',
+    '- relationshipType: the relationshipType of the matched need.',
+    '- reason: one concise sentence grounded only in the candidate data.',
+    '- confidence: a whole number from 0 to 100.',
+    '- riskFlags: a list of short strings, empty when there is no concern.',
+    '- suggestedNextAction: a short imperative string.',
+    '- bonus: true for bonus candidates beyond the quota, false otherwise.',
+    'Provide all chosen candidates together as a single participants list.',
   ].join('\n');
 }
