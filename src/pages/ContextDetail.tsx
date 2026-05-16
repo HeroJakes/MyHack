@@ -1303,13 +1303,10 @@ function AiRecommendationsTab({
                     </p>
                   </td>
                   <td className="px-2 py-3">
-                    <p className="text-xs font-bold text-slate-700">
-                      {nextActionLabel(row)}
-                    </p>
                     <button
                       type="button"
                       onClick={() => onViewProfile(row)}
-                      className="mt-1.5 rounded-lg border border-blue-200 px-2 py-1 text-[11px] font-black text-blue-600 hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                      className="rounded-lg border border-blue-200 px-2 py-1 text-[11px] font-black text-blue-600 hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                     >
                       View Profile
                     </button>
