@@ -11,8 +11,8 @@ import { functions } from '../lib/firebase'
 import type { ExtractedProfile } from '../types'
 
 export interface ExtractUserProfileInput {
-  linkedinUrl?: string
-  websiteUrl?: string
+  /** Uploaded CV / resume, carried as base64 inline data. */
+  cvFile?: { mimeType: string; data: string }
   bio?: string
 }
 
@@ -29,7 +29,7 @@ function toMessage(err: unknown): string {
     return 'Your session has expired. Please sign in again.'
   }
   if (code.includes('invalid-argument')) {
-    return 'Add a LinkedIn URL, a website, or a short bio first.'
+    return 'Upload your CV or add a short bio first.'
   }
   if (code.includes('internal')) {
     return "Gemini couldn't read that profile automatically."

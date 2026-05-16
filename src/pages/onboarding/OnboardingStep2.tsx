@@ -3,7 +3,7 @@
  *
  * Step 1 keeps its own loading overlay and navigates straight to step 3, so
  * this route is normally skipped. It is kept as a standalone shell: if it is
- * reached directly it forwards the user to wherever they actually belong.
+ * reached directly it forwards the user to wherever they belong.
  */
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -11,19 +11,13 @@ import { useOnboardingStore } from '../../stores/useOnboardingStore'
 
 export default function OnboardingStep2() {
   const navigate = useNavigate()
-  const { extractedProfile, input } = useOnboardingStore()
+  const extractedProfile = useOnboardingStore((state) => state.extractedProfile)
 
   useEffect(() => {
-    if (extractedProfile) {
-      navigate('/onboarding/step3', { replace: true })
-    } else if (
-      !input.linkedinUrl.trim() &&
-      !input.websiteUrl.trim() &&
-      !input.bio.trim()
-    ) {
-      navigate('/onboarding/step1', { replace: true })
-    }
-  }, [extractedProfile, input, navigate])
+    navigate(extractedProfile ? '/onboarding/step3' : '/onboarding/step1', {
+      replace: true,
+    })
+  }, [extractedProfile, navigate])
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4 text-center">

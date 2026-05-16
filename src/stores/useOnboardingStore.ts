@@ -11,8 +11,6 @@ import { create } from 'zustand'
 import type { ExtractedProfile } from '../types'
 
 interface OnboardingInput {
-  linkedinUrl: string
-  websiteUrl: string
   bio: string
 }
 
@@ -29,8 +27,6 @@ interface OnboardingStore {
 }
 
 const initialInput: OnboardingInput = {
-  linkedinUrl: '',
-  websiteUrl: '',
   bio: '',
 }
 
