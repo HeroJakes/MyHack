@@ -236,21 +236,31 @@ export default function AppSidebar() {
         </div>
 
         <div className="flex items-center gap-2 rounded-2xl px-1 py-1">
-          {profile.photoURL ? (
-            <img
-              src={profile.photoURL}
-              alt=""
-              className="h-10 w-10 shrink-0 rounded-full object-cover ring-2 ring-white shadow-sm"
-            />
-          ) : (
-            <InitialsAvatar name={profile.name} />
-          )}
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[13px] font-black text-gray-950">{profile.name}</p>
-            <p className="truncate text-[11px] font-semibold text-gray-500">
-              {profile.headline || 'Ecosystem Builder'}
-            </p>
-          </div>
+          <NavLink
+            to="/profile"
+            className={({ isActive }) =>
+              `flex min-w-0 flex-1 items-center gap-2 rounded-2xl px-1 py-1 transition-colors ${
+                isActive ? 'bg-blue-50' : 'hover:bg-gray-50'
+              }`
+            }
+            aria-label="View user profile"
+          >
+            {profile.photoURL ? (
+              <img
+                src={profile.photoURL}
+                alt=""
+                className="h-10 w-10 shrink-0 rounded-full object-cover ring-2 ring-white shadow-sm"
+              />
+            ) : (
+              <InitialsAvatar name={profile.name} />
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13px] font-black text-gray-950">{profile.name}</p>
+              <p className="truncate text-[11px] font-semibold text-gray-500">
+                {profile.headline || 'Ecosystem Builder'}
+              </p>
+            </div>
+          </NavLink>
           <button
             type="button"
             onClick={() => void logout()}

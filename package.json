@@ -9,10 +9,12 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "test:vertex": "tsx scripts/testVertex.ts",
     "seed": "tsx scripts/seed.ts",
     "emulators": "npm --prefix functions run build && firebase emulators:start"
   },
   "dependencies": {
+    "@google/genai": "^2.3.0",
     "@tailwindcss/vite": "^4.3.0",
     "d3": "^7.9.0",
     "firebase": "^12.13.0",

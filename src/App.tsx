@@ -17,6 +17,7 @@ import MyContexts from './pages/MyContexts'
 import MyInvites from './pages/MyInvites'
 import EcosystemLinks from './pages/EcosystemLinks'
 import People from './pages/People'
+import UserProfile from './pages/UserProfile'
 import Analytics from './pages/Analytics'
 import OnboardingStep1 from './pages/onboarding/OnboardingStep1'
 import OnboardingStep2 from './pages/onboarding/OnboardingStep2'
@@ -160,6 +161,14 @@ export default function App() {
         element={
           <PrivateRoute>
             <People />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/profile"
+        element={
+          <PrivateRoute>
+            <UserProfile />
           </PrivateRoute>
         }
       />
