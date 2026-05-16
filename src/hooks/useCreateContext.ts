@@ -358,11 +358,12 @@ export function useCreateContext() {
         }
 
         if (status === 'open') {
-          try {
-            await generateRecommendations(contextId)
-          } catch (generateErr) {
-            console.error('generateParticipants failed after context creation:', generateErr)
-          }
+          void generateRecommendations(contextId).catch((generateErr) => {
+            console.error(
+              'generateParticipants failed after context creation:',
+              generateErr,
+            )
+          })
         }
 
         return contextId
