@@ -13,15 +13,6 @@ import type {
 
 const REGION = 'asia-southeast1';
 
-interface NeedsPayload {
-  needs?: Array<{
-    role?: unknown;
-    count?: unknown;
-    relationshipType?: unknown;
-    requirements?: unknown;
-  }>;
-}
-
 const VALID_ROLES: RelationshipRole[] = [
   'Mentor',
   'Partner',
@@ -55,7 +46,7 @@ export const suggestRelationshipNeeds = onCall(
       `Field: ${field}`,
       `Description: ${typeof description === 'string' && description ? description : '(none provided)'}`,
       '',
-      'Return ONLY raw JSON of shape { "needs": RelationshipNeed[] }.',
+      'Return ONLY raw JSON of shape { "relationshipNeeds": RelationshipNeed[] }.',
       'Each RelationshipNeed has exactly:',
       `- role: one of ${VALID_ROLES.join(' | ')}`,
       '- count: positive integer',
@@ -65,12 +56,15 @@ export const suggestRelationshipNeeds = onCall(
       'Suggest 3 to 5 needs that realistically fit the field and description.',
     ].join('\n');
 
-    const parsed = await callGemini<NeedsPayload>(
-      prompt,
-      (p) => !!p && Array.isArray((p as NeedsPayload).needs),
-    );
+    const parsed = await callGemini(prompt);
+    if (!parsed.relationshipNeeds || !Array.isArray(parsed.relationshipNeeds)) {
+      throw new HttpsError(
+        'internal',
+        'Unexpected Gemini response shape for relationshipNeeds',
+      );
+    }
 
-    const needs: RelationshipNeed[] = (parsed.needs ?? []).map((n) => {
+    const needs: RelationshipNeed[] = parsed.relationshipNeeds.map((n: any) => {
       const role = String(n.role) as RelationshipRole;
       const relationshipType = String(n.relationshipType) as RelationshipType;
       return {

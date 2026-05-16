@@ -1,81 +1,62 @@
 /**
  * Thin, reusable wrapper around Gemini 1.5 Flash.
  *
- * Pure helper: it does not touch Firestore or request auth. It strips markdown
- * fences, parses JSON, validates the shape, and retries once with a stricter
- * instruction before giving up.
+ * The GEMINI_API_KEY secret is injected into process.env only at function
+ * invocation time, so the SDK is initialized lazily inside getModel() — never
+ * at module load. callGemini strips markdown fences, parses JSON and retries
+ * once on a parse failure. It does NOT validate the response shape; deciding
+ * whether `participants` / `relationshipNeeds` / `profile` is present is the
+ * caller's responsibility.
  */
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { HttpsError } from 'firebase-functions/v2/https';
-import * as logger from 'firebase-functions/logger';
 
 const MODEL = 'gemini-1.5-flash';
 
-/** Removes ```json fences and stray ``` markers from a model response. */
-function stripFences(raw: string): string {
-  return raw
-    .replace(/```json?\n?/g, '')
-    .replace(/```/g, '')
-    .trim();
-}
-
-/** Default validator — the participant matching path expects a participants array. */
-function defaultValidator(parsed: unknown): boolean {
-  const value = parsed as { participants?: unknown };
-  return !!value && Array.isArray(value.participants);
-}
-
-async function runModel(prompt: string): Promise<string> {
+/**
+ * Builds the Gemini model at invocation time, when the secret is guaranteed
+ * to be present on process.env. Never call this at module load.
+ */
+function getModel() {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    throw new HttpsError(
-      'failed-precondition',
-      'GEMINI_API_KEY secret is not configured. Set it before calling AI functions.',
-    );
+    throw new HttpsError('internal', 'GEMINI_API_KEY secret is not set');
   }
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
+  return genAI.getGenerativeModel({
     model: MODEL,
     generationConfig: { temperature: 0, responseMimeType: 'application/json' },
   });
-  const result = await model.generateContent(prompt);
-  return result.response.text();
 }
 
 /**
- * Calls Gemini, parses the JSON response and validates it.
+ * Calls Gemini and returns the parsed JSON response.
  *
- * @param prompt   the fully built prompt string.
- * @param validate returns true when the parsed payload has the expected shape.
- *                 Defaults to the participant-matching validator.
+ * On a JSON parse failure it retries exactly once with a stricter instruction,
+ * then throws HttpsError('internal') if the response is still malformed. The
+ * parsed object is returned as-is — shape validation is the caller's job.
  */
-export async function callGemini<T = Record<string, unknown>>(
-  prompt: string,
-  validate: (parsed: unknown) => boolean = defaultValidator,
-): Promise<T> {
-  const attempts = [
-    prompt,
-    `${prompt}\nIMPORTANT: return only raw JSON, no markdown.`,
-  ];
+export async function callGemini(prompt: string, attempt = 0): Promise<any> {
+  const result = await getModel().generateContent(prompt);
+  const raw = result.response.text();
+  const cleaned = raw
+    .replace(/```json?\n?/g, '')
+    .replace(/```/g, '')
+    .trim();
 
-  let lastError: unknown;
-  for (let i = 0; i < attempts.length; i += 1) {
-    try {
-      const raw = await runModel(attempts[i]);
-      const cleaned = stripFences(raw);
-      const parsed = JSON.parse(cleaned) as T;
-      if (!validate(parsed)) {
-        throw new Error('Gemini response did not match the expected schema.');
-      }
-      return parsed;
-    } catch (err) {
-      lastError = err;
-      logger.warn(`Gemini attempt ${i + 1} failed`, { error: String(err) });
+  try {
+    return JSON.parse(cleaned);
+  } catch (err) {
+    console.error(`callGemini: JSON parse failed on attempt ${attempt}`, err);
+    if (attempt === 0) {
+      return callGemini(
+        `${prompt}\nIMPORTANT: return only raw JSON, no markdown.`,
+        1,
+      );
     }
+    throw new HttpsError(
+      'internal',
+      'Gemini returned malformed JSON after retry',
+    );
   }
-
-  throw new HttpsError(
-    'internal',
-    `Gemini call failed after retry: ${(lastError as Error)?.message ?? 'unknown error'}`,
-  );
 }

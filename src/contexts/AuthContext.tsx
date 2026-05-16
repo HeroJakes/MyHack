@@ -20,13 +20,23 @@ import {
   signOut,
 } from 'firebase/auth'
 import type { User as FirebaseUser } from 'firebase/auth'
-import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
+import {
+  doc,
+  getDoc,
+  onSnapshot,
+  serverTimestamp,
+  setDoc,
+} from 'firebase/firestore'
 import { auth, db, googleProvider } from '../lib/firebase'
 
 interface AuthContextValue {
   user: FirebaseUser | null
   loading: boolean
   error: string
+  /** Whether the signed-in user has finished the onboarding flow. */
+  onboardingComplete: boolean
+  /** True while the user's profile document is still being read. */
+  profileLoading: boolean
   signInWithGoogle: () => Promise<void>
   signInWithEmail: (email: string, password: string) => Promise<void>
   signUpWithEmail: (email: string, password: string) => Promise<void>
@@ -61,6 +71,7 @@ async function ensureUserDocument(user: FirebaseUser): Promise<void> {
     contributionSignals: [],
     bio: '',
     profileCompleteness: 10,
+    onboardingComplete: false,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   })
@@ -70,20 +81,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<FirebaseUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [onboardingComplete, setOnboardingComplete] = useState(false)
+  const [profileLoading, setProfileLoading] = useState(true)
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (next) => {
+    let unsubscribeProfile: (() => void) | undefined
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (next) => {
+      unsubscribeProfile?.()
+      unsubscribeProfile = undefined
+
       if (next) {
         try {
           await ensureUserDocument(next)
         } catch {
           // Profile bootstrap is non-fatal — the user is still signed in.
         }
+        setUser(next)
+        setLoading(false)
+        setProfileLoading(true)
+        // Live-track onboarding status so the route guards never go stale.
+        unsubscribeProfile = onSnapshot(
+          doc(db, 'users', next.uid),
+          (snap) => {
+            setOnboardingComplete(snap.data()?.onboardingComplete === true)
+            setProfileLoading(false)
+          },
+          () => {
+            setOnboardingComplete(false)
+            setProfileLoading(false)
+          },
+        )
+      } else {
+        setUser(null)
+        setOnboardingComplete(false)
+        setProfileLoading(false)
+        setLoading(false)
       }
-      setUser(next)
-      setLoading(false)
     })
-    return unsubscribe
+
+    return () => {
+      unsubscribeAuth()
+      unsubscribeProfile?.()
+    }
   }, [])
 
   const signInWithGoogle = useCallback(async () => {
@@ -133,6 +173,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       loading,
       error,
+      onboardingComplete,
+      profileLoading,
       signInWithGoogle,
       signInWithEmail,
       signUpWithEmail,
@@ -143,6 +185,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       loading,
       error,
+      onboardingComplete,
+      profileLoading,
       signInWithGoogle,
       signInWithEmail,
       signUpWithEmail,

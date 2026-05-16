@@ -15,10 +15,6 @@ import type { Event, ParticipantSuggestion, User } from './types';
 
 const REGION = 'asia-southeast1';
 
-interface ParticipantsPayload {
-  participants: Array<Record<string, unknown>>;
-}
-
 /** Splits the event field into lowercase tokens used for the pre-filter. */
 function tokenize(field: string): string[] {
   return field
@@ -83,11 +79,17 @@ export const generateParticipants = onCall(
     const candidates = preFiltered.length > 0 ? preFiltered : others;
 
     const prompt = buildParticipantPrompt(event, needs, candidates);
-    const parsed = await callGemini<ParticipantsPayload>(prompt);
+    const parsed = await callGemini(prompt);
+    if (!parsed.participants || !Array.isArray(parsed.participants)) {
+      throw new HttpsError(
+        'internal',
+        'Unexpected Gemini response shape for participants',
+      );
+    }
 
     const generatedAt = Timestamp.now();
     const suggestions: ParticipantSuggestion[] = parsed.participants.map(
-      (p, idx) => {
+      (p: any, idx: number) => {
         const userId = String(p.userId ?? '');
         const matched = userMap.get(userId);
         return {
@@ -102,7 +104,7 @@ export const generateParticipants = onCall(
           reason: String(p.reason ?? ''),
           confidence: Math.max(0, Math.min(100, Number(p.confidence ?? 0))),
           riskFlags: Array.isArray(p.riskFlags)
-            ? p.riskFlags.map((r) => String(r))
+            ? p.riskFlags.map((r: any) => String(r))
             : [],
           suggestedNextAction: String(p.suggestedNextAction ?? 'Review candidate'),
           rank: Number(p.rank ?? idx + 1),

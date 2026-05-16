@@ -75,8 +75,20 @@ export interface User {
   contributionSignals: string[];
   bio: string;
   profileCompleteness: number;
+  onboardingComplete: boolean;
   createdAt: TimestampValue;
   updatedAt: TimestampValue;
+}
+
+/** Structured profile returned by the `extractUserProfile` Cloud Function. */
+export interface ExtractedProfile {
+  headline: string;
+  bio: string;
+  inferredSector: string[];
+  inferredExpertise: string[];
+  inferredStage: InferredStage;
+  contributionSignals: string[];
+  profileCompleteness: number;
 }
 
 export interface RelationshipNeed {

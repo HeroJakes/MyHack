@@ -2,12 +2,17 @@
  * App — React Router routes and the authenticated app shell.
  *
  * Routes:
- *   /login           public sign-in page
- *   /                Dashboard (My Events / My Invites / Relationship Graph)
- *   /events/new      CreateEvent
- *   /events/:eventId EventDetail (organizer view)
- *   /invites/:inviteId InviteView (invitee view)
- *   /graph           RelationshipGraph
+ *   /login                 public sign-in / sign-up
+ *   /signup                alias of /login that opens on the sign-up tab
+ *   /onboarding/step1..3    first-run profile onboarding (auth, pre-onboarding)
+ *   / , /dashboard          Dashboard
+ *   /events/new             CreateEvent
+ *   /events/:eventId        EventDetail (organizer view)
+ *   /invites/:inviteId      InviteView (invitee view)
+ *   /graph                  RelationshipGraph
+ *
+ * `PrivateRoute` gates the main app on a completed onboarding; `OnboardingRoute`
+ * gates the onboarding flow so users who already finished cannot re-enter it.
  */
 import type { ReactNode } from 'react'
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
@@ -18,6 +23,9 @@ import CreateEvent from './pages/CreateEvent'
 import EventDetail from './pages/EventDetail'
 import InviteView from './pages/InviteView'
 import RelationshipGraph from './pages/RelationshipGraph'
+import OnboardingStep1 from './pages/onboarding/OnboardingStep1'
+import OnboardingStep2 from './pages/onboarding/OnboardingStep2'
+import OnboardingStep3 from './pages/onboarding/OnboardingStep3'
 
 function FullScreenLoader() {
   return (
@@ -84,57 +92,106 @@ function Shell({ children }: { children: ReactNode }) {
   )
 }
 
-function ProtectedRoute({ children }: { children: ReactNode }) {
-  const { user, loading } = useAuth()
+/** Requires auth + a completed onboarding; otherwise redirects appropriately. */
+function PrivateRoute({ children }: { children: ReactNode }) {
+  const { user, loading, onboardingComplete, profileLoading } = useAuth()
   if (loading) return <FullScreenLoader />
   if (!user) return <Navigate to="/login" replace />
+  if (profileLoading) return <FullScreenLoader />
+  if (!onboardingComplete) return <Navigate to="/onboarding/step1" replace />
   return <Shell>{children}</Shell>
+}
+
+/** Requires auth but NOT a completed onboarding — guards the onboarding flow. */
+function OnboardingRoute({ children }: { children: ReactNode }) {
+  const { user, loading, onboardingComplete, profileLoading } = useAuth()
+  if (loading) return <FullScreenLoader />
+  if (!user) return <Navigate to="/login" replace />
+  if (profileLoading) return <FullScreenLoader />
+  if (onboardingComplete) return <Navigate to="/dashboard" replace />
+  return <>{children}</>
 }
 
 export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<Login />} />
+
+      <Route
+        path="/onboarding/step1"
+        element={
+          <OnboardingRoute>
+            <OnboardingStep1 />
+          </OnboardingRoute>
+        }
+      />
+      <Route
+        path="/onboarding/step2"
+        element={
+          <OnboardingRoute>
+            <OnboardingStep2 />
+          </OnboardingRoute>
+        }
+      />
+      <Route
+        path="/onboarding/step3"
+        element={
+          <OnboardingRoute>
+            <OnboardingStep3 />
+          </OnboardingRoute>
+        }
+      />
+
       <Route
         path="/"
         element={
-          <ProtectedRoute>
+          <PrivateRoute>
             <Dashboard />
-          </ProtectedRoute>
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/dashboard"
+        element={
+          <PrivateRoute>
+            <Dashboard />
+          </PrivateRoute>
         }
       />
       <Route
         path="/events/new"
         element={
-          <ProtectedRoute>
+          <PrivateRoute>
             <CreateEvent />
-          </ProtectedRoute>
+          </PrivateRoute>
         }
       />
       <Route
         path="/events/:eventId"
         element={
-          <ProtectedRoute>
+          <PrivateRoute>
             <EventDetail />
-          </ProtectedRoute>
+          </PrivateRoute>
         }
       />
       <Route
         path="/invites/:inviteId"
         element={
-          <ProtectedRoute>
+          <PrivateRoute>
             <InviteView />
-          </ProtectedRoute>
+          </PrivateRoute>
         }
       />
       <Route
         path="/graph"
         element={
-          <ProtectedRoute>
+          <PrivateRoute>
             <RelationshipGraph />
-          </ProtectedRoute>
+          </PrivateRoute>
         }
       />
+
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

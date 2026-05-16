@@ -85,7 +85,7 @@ export default function RelationshipGraphPanel({
 
     const nodeGroup = svg
       .append('g')
-      .selectAll('g')
+      .selectAll<SVGGElement, GraphNode>('g')
       .data(nodes)
       .join('g')
       .call(

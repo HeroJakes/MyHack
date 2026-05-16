@@ -12,9 +12,11 @@ service cloud.firestore {
     }
 
     // Users: anyone signed in can read profiles; you may only write your own.
+    // Onboarding — including the `onboardingComplete` flag — is a client write.
     match /users/{userId} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn() && request.auth.uid == userId;
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isSignedIn() && request.auth.uid == userId;
     }
 
     // Events: readable by any signed-in user. The organizer owns updates/deletes.

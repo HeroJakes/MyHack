@@ -1,0 +1,128 @@
+EcoGraph AI — AI Implementation Notes
+
+
+SECTION 1 — WHAT WAS BUILT
+
+This section describes every AI-related file in functions/src/.
+
+callGemini.ts is the shared low-level wrapper around the Gemini model. Its job is to send a prompt to Gemini, strip any markdown fences off the response, parse the result as JSON, and retry once if parsing fails. It depends on the @google/generative-ai SDK and on HttpsError from firebase-functions/v2/https. It is imported by extractUserProfile.ts, generateParticipants.ts and suggestRelationshipNeeds.ts.
+
+extractUserProfile.ts is a callable Cloud Function. Its job is to turn whatever a user pastes during onboarding — a LinkedIn URL, a website URL and/or a free-text bio — into a structured profile object with a headline, a bio, sectors, expertise, a stage, contribution signals and a completeness score. It depends on callGemini.ts, on the InferredStage type from types.ts, and on onCall and HttpsError from firebase-functions/v2/https.
+
+buildParticipantPrompt.ts is a pure helper with no input or output of its own. Its job is to assemble the text prompt for the participant matching engine out of an event, its role requirements and a candidate list. It depends only on types.ts. It is imported by generateParticipants.ts.
+
+generateParticipants.ts is a callable Cloud Function. Its job is to read an event and all users, pre-filter the users down to a relevant candidate set, ask Gemini to rank them against the event's role requirements, and write the ranked suggestions into Firestore. It depends on callGemini.ts, buildParticipantPrompt.ts, the types from types.ts, getFirestore and Timestamp from firebase-admin/firestore, and onCall and HttpsError from firebase-functions/v2/https.
+
+suggestRelationshipNeeds.ts is a callable Cloud Function. Its job is to ask Gemini to propose a realistic set of relationship needs — the roles an organiser should fill — for an event, given the event's field and description. It depends on callGemini.ts, on the role and type definitions from types.ts, and on onCall and HttpsError from firebase-functions/v2/https.
+
+Two further files support these but contain no AI logic. types.ts is a type-only module shared by every function. index.ts is the Cloud Functions entry point; it initialises the Admin SDK once and re-exports each callable function.
+
+The total number of Cloud Functions that use AI is three. They are extractUserProfile, generateParticipants and suggestRelationshipNeeds. All three reach Gemini through the single callGemini.ts wrapper. The other exported functions — createEvent, sendInvites and respondToInvite — do not use AI.
+
+
+SECTION 2 — HOW IT WORKS END TO END
+
+This section walks through the three AI flows from the frontend trigger to the Firestore write.
+
+Flow A — user profile extraction.
+
+The flow is triggered on the onboarding screen. The frontend hook useExtractProfile calls the extractUserProfile callable function. The input sent to the function is an object that may contain any combination of linkedinUrl, websiteUrl and bio. The function first requires the caller to be signed in, then requires at least one of the three inputs to be a non-empty string, throwing an invalid-argument error if all are empty. It builds one prompt that embeds the three input values and a fixed set of extraction rules, including a rule that asks Gemini to score profileCompleteness from 0 to 100. It sends that prompt to Gemini. Gemini returns a JSON object containing headline, bio, inferredSector, inferredExpertise, inferredStage, contributionSignals and profileCompleteness. The function then runs a shape check called hasProfileShape. If the shape is wrong it calls Gemini a second time with a stricter raw-JSON instruction appended, and if the shape is still wrong it throws an internal error. A valid payload is normalised — strings are trimmed, arrays are de-duplicated and capped, the stage is validated against the allowed list and defaults to pre-seed if unrecognised, and the completeness number is clamped to the range 0 to 100 — and the cleaned profile is returned to the client. The function itself does not write anything to Firestore. The frontend shows the result on the onboarding review step, and only after the user reviews and confirms it does the client write the fields headline, bio, inferredSector, inferredExpertise, inferredStage, contributionSignals, profileCompleteness and onboardingComplete onto the document users/{userId}.
+
+Flow B — relationship needs suggestion.
+
+The flow is triggered while an organiser is creating an event. The frontend calls the suggestRelationshipNeeds callable function. The organiser provides a field, which is required, and a description, which is optional. The function checks the caller is signed in and that field is a non-empty string. It then builds a prompt by joining a series of lines that state the field and description and ask Gemini for three to five relationship needs. The prompt constrains each need to have a role drawn from the allowed role list, a positive integer count, a relationshipType drawn from the allowed type list, and a one-sentence requirements string. The function calls Gemini, checks that the parsed response contains a relationshipNeeds array, and throws an internal error if it does not. It then normalises each entry — the role and relationshipType are validated against the allowed lists and fall back to Partner and partner_linkage respectively if unrecognised, and the count is coerced to a positive integer of at least one. The function returns the cleaned list to the frontend in the shape { needs }. Nothing is written to Firestore; the organiser edits the suggestions and saves them onto the event separately.
+
+Flow C — AI participant matching.
+
+The flow is triggered when the organiser asks the system to generate linkages for an event, and the frontend calls the generateParticipants callable function with a contextId, which is the event id. The pipeline runs in ten stages.
+
+1. Auth check. The function rejects the call with an unauthenticated error if there is no signed-in caller.
+
+2. Input validation. It reads contextId from the request data, also accepting eventId as an alias, and throws invalid-argument if it is not a string.
+
+3. Parallel Firestore reads. The event document and the entire users collection are read together in a single Promise.all so the two reads run concurrently.
+
+4. Existence and ownership check. If the event document does not exist the function throws not-found. If the event's createdBy field does not equal the caller's uid it throws permission-denied, so only the organiser of the event can generate suggestions for it.
+
+5. Candidate pool assembly. Every user except the organiser is taken as the starting candidate pool.
+
+6. Rule-based pre-filter. The event's field is split into lowercase tokens. A candidate is kept if any token appears anywhere in that candidate's combined sector and expertise text. This is a keyword-overlap filter rather than a numeric score. If the filter removes every candidate, the function falls back to using the full pool so Gemini always receives something to rank.
+
+7. Gemini prompt construction. buildParticipantPrompt assembles the event context, the event's role requirements and the surviving candidate list into a single prompt string.
+
+8. Gemini call and shape validation. callGemini sends the prompt and returns parsed JSON. The function checks that the parsed object contains a participants array and throws an internal error if it does not.
+
+9. Result enrichment. Each participant returned by Gemini is mapped into a ParticipantSuggestion record. Name, photoURL and headline are taken from the matching user record where one is found, and otherwise fall back to whatever strings Gemini returned. Confidence is clamped to the range 0 to 100, riskFlags are coerced to an array of strings, and a rank is assigned. Note that the returned userId is not currently checked against the candidate list, so a hallucination guard is not yet enforced at this stage; this is covered in Section 5.
+
+10. Batch write and return. The suggestions are written under suggestions/{contextId}/participants in a single Firestore batch, alongside a summary document written on suggestions/{contextId} that records the context name, the count and the generation time. The function returns the object { contextId, count, suggestions } to the frontend.
+
+
+SECTION 3 — HOW GEMINI IS CALLED
+
+callGemini.ts exports a single function, callGemini, which takes a prompt string and an attempt number that defaults to zero.
+
+The model used is gemini-1.5-flash. The generation config sets temperature to 0, which makes the output as deterministic and repeatable as the model allows, and sets responseMimeType to application/json, which asks Gemini to emit a JSON document rather than free prose.
+
+The Gemini client is built inside a function called getModel rather than being created once as a top-level constant. This is deliberate and necessary. The Gemini API key is stored in Firebase Secret Manager, and Firebase only injects a declared secret into process.env at the moment the Cloud Function is invoked — it is not present when the module is first loaded and evaluated. If the GoogleGenerativeAI client were constructed at the top level of the module, it would run at module load time, process.env.GEMINI_API_KEY would still be undefined, and the client would be created with no key. By placing the client construction inside getModel, which only runs when callGemini is actually called during an invocation, the secret is guaranteed to be present. getModel reads process.env.GEMINI_API_KEY, throws an internal HttpsError with the message that the key is not set if it is missing, builds the client, and returns the configured model.
+
+Gemini sometimes wraps its JSON output in markdown code fences even when asked not to. callGemini strips these before parsing. It runs two replacements on the raw text. The first removes an opening fence — the pattern matches three backticks optionally followed by the text json, where even the final letter n is optional, and an optional trailing newline. The second removes any remaining run of three backticks. The result is then trimmed of surrounding whitespace.
+
+The cleaned string is passed to JSON.parse inside a try block. If parsing succeeds, the parsed object is returned immediately. If parsing throws and this is the first attempt, that is attempt zero, callGemini logs the failure with console.error and calls itself again with the attempt number set to one and with an extra instruction appended to the prompt telling Gemini to return only raw JSON with no markdown. If parsing throws again on attempt one, callGemini throws an internal HttpsError with the message that Gemini returned malformed JSON after retry. There is therefore exactly one retry, and the only thing that triggers a retry is a JSON parse failure.
+
+callGemini does not validate the shape of the parsed object. It only guarantees that the response was syntactically valid JSON. This is intentional. The three callers each expect a different shape — extractUserProfile expects profile fields, generateParticipants expects a participants array, and suggestRelationshipNeeds expects a relationshipNeeds array — so a single shape check inside callGemini would be wrong for two of the three callers, or would have to be taught about all of them and grow every time a new caller is added. Keeping callGemini shape-agnostic lets it stay a small, stable, reusable primitive. Each caller therefore runs its own shape check immediately after the call and decides for itself whether to retry, throw or normalise the result.
+
+
+SECTION 4 — API KEY ARCHITECTURE
+
+The question is whether extractUserProfile should use a separate Gemini API key from the one used by generateParticipants and suggestRelationshipNeeds.
+
+The case for one shared key is simplicity. All three functions call the same model, gemini-1.5-flash, through the same callGemini wrapper. A single key means a single Secret Manager entry to create, grant access to and rotate. There is no functional difference between the calls — only the prompts differ — so there is no model or quota reason to separate them. Rotation is a single operation, and at the current scale there is no quota pressure that distinguishes profile extraction from matching.
+
+The case for a separate key is observability and isolation. extractUserProfile runs on a different cadence from the other two. It is user-triggered and fires during onboarding and profile updates, so its call volume tracks sign-ups and edits. generateParticipants is organiser-triggered, runs less frequently, and is more expensive per call because its prompt carries the whole candidate list. Giving extractUserProfile its own key would let each use case carry its own quota and rate-limit settings in Google AI Studio, would let profile-extraction spend be monitored separately from matching spend, and would let one use case be throttled or its key rotated without disrupting the other if it were ever abused or spiked.
+
+The recommendation is to use one shared key for now. At the current stage the operational simplicity clearly outweighs the benefit of separate quotas: all three functions are low volume and use the same inexpensive model, and a single key is one thing to manage and rotate. This should be revisited only if usage grows to the point where per-use-case cost attribution or independent rate limiting genuinely matters, and at that point splitting the key is a small and well-contained change.
+
+If two keys are chosen, the following needs to be done in Firebase and in the code. First, create a second secret, for example named GEMINI_API_KEY_PROFILE, by running firebase functions:secrets:set GEMINI_API_KEY_PROFILE and entering the second key. Second, update the onCall configuration of extractUserProfile so that its secrets array reads ['GEMINI_API_KEY_PROFILE'] instead of ['GEMINI_API_KEY']; the secrets arrays of generateParticipants and suggestRelationshipNeeds stay as ['GEMINI_API_KEY']. Third, make callGemini able to read a chosen secret: add an optional parameter to callGemini and getModel, for example a secretName parameter that defaults to 'GEMINI_API_KEY', so that getModel reads process.env[secretName] instead of the hard-coded process.env.GEMINI_API_KEY, and have extractUserProfile pass 'GEMINI_API_KEY_PROFILE' as that argument when it calls callGemini. Because the parameter defaults to the original name, the other two callers need no change. Finally, for local testing add the second key to functions/.secret.local as well, as described in Section 6.
+
+
+SECTION 5 — WHAT STILL NEEDS TO BE DONE
+
+Before listing the gaps, two things were checked and found correct and so are not listed as work. All three onCall functions that call callGemini declare secrets: ['GEMINI_API_KEY'] in their configuration, so the secret will be injected at invocation time. The extractUserProfile prompt does include the profileCompleteness scoring instruction, as rule nine of its rule block. The following items are incomplete or need a follow-up.
+
+1. generateParticipants.ts has no hallucination guard. After Gemini returns the participants array, every entry is turned into a stored suggestion regardless of whether its userId matches a real user. When the user lookup map has no entry for a returned userId, the code still writes a suggestion, using the name, photoURL and headline strings that Gemini supplied. This means an invented or hallucinated userId can become a stored suggestion. What needs to happen: in the mapping step, look up each returned userId in the user map, or in the pre-filtered candidate set, and skip any participant whose userId is not found, so only real candidates can become suggestions.
+
+2. buildParticipantPrompt.ts has no support for previous ecosystem links. Its signature is buildParticipantPrompt(event, needs, candidates); there is no parameter for prior links, so the prompt cannot include a relationship-memory section and cannot boost candidates that have a track record. The question of whether it handles an empty previousLinks array does not arise, because no such parameter exists. What needs to happen, if relationship-memory boosting is wanted: add a previousLinks parameter to the function, render a section that lists those links, and guard the empty case by rendering a short "none yet" line when the array is empty. generateParticipants would also need to read the ecosystemLinks collection and pass the result in.
+
+3. generateParticipants.ts uses a basic pre-filter. The pre-filter is a keyword-overlap test, not a numeric ranking. The function does not read the invites collection, so users who have already been invited are not excluded from the candidate pool, and it does not read the ecosystemLinks collection, so prior outcomes do not influence selection. There is also no cap on the number of candidates sent to Gemini, so a large user base produces a large and costly prompt. What needs to happen, if a richer pre-filter is wanted: read invites and ecosystemLinks, score candidates numerically, drop already-invited users, and cap the shortlist before building the prompt.
+
+4. generateParticipants.ts does not clear stale suggestions. Suggestions are written with deterministic document ids derived from the contextId and the userId, and prior suggestions for the event are not deleted before the new batch is written. If a later run recommends a different set of users, the suggestion documents for users no longer recommended are left behind in the subcollection. What needs to happen: delete the existing documents under suggestions/{contextId}/participants before writing the new batch.
+
+5. generateParticipants.ts has no observability logging. The function does not log how many candidates entered the pre-filter, how many survived it, or how large the Gemini response was, so an individual run cannot be traced from the Cloud Functions logs. What needs to happen: add console.log lines for the pre-filter input count, the post-filter count, and the number of participants Gemini returned.
+
+6. extractUserProfile.ts has a shape check that is slightly narrower than the prompted schema. The prompt asks Gemini for seven fields, but hasProfileShape verifies only six of them — headline, bio, inferredSector, inferredExpertise, inferredStage and contributionSignals — and does not check profileCompleteness. This is not a defect, because normalizeProfile defaults a missing or non-numeric profileCompleteness to zero, but the check and the prompted schema are not a strict one-to-one match. What needs to happen: either add a numeric check for profileCompleteness to hasProfileShape, or consciously leave it and treat completeness as an optional field.
+
+7. callGemini.ts only handles JSON parse failures. The retry path covers a malformed-JSON response, but a failure inside the generateContent call itself — a network error, a quota error, or a response blocked by a Gemini safety filter where reading the response text throws — is not caught and will propagate as a raw error rather than as a clean HttpsError. What needs to happen, if cleaner client-facing errors are wanted: wrap the generateContent call and surface API and safety failures as an HttpsError with a clear message.
+
+
+SECTION 6 — HOW TO TEST THIS LOCALLY
+
+This section describes how to exercise all three AI flows against the Firebase emulator.
+
+Start the emulator. From the project root run npm run emulators. That script first builds the functions and then runs firebase emulators:start. The configured ports are 9099 for auth, 5001 for functions, 8080 for Firestore, and 4000 for the emulator user interface.
+
+Provide the Gemini key for local use. Secret Manager does not run in the emulator, so the declared GEMINI_API_KEY secret has to come from a local file. Create a file at functions/.secret.local containing a single line, GEMINI_API_KEY=your-key-here. The Firebase emulator loads declared secrets from that file, and firebase.json already ignores files matching *.local, so the file will not be deployed or packaged. As an alternative, the variable GEMINI_API_KEY can be exported in the shell environment before firebase emulators:start is run.
+
+Load the demo data. In a second terminal run npm run seed. This populates the Firestore emulator with ten users with ids user-001 to user-010, two events, and two ecosystem links. The first event is event-001, Tech Summit KL 2026, with field FinTech and createdBy user-001. The second is event-002, HealthTech Demo Day, with field HealthTech and createdBy user-002.
+
+Point the frontend at the emulator. Set VITE_USE_EMULATORS=true in the root .env file, then run npm run dev. The file src/lib/firebase.ts reads that flag and connects auth, Firestore and Functions to the local emulators. Sign in or sign up once so a local auth user exists.
+
+Test Flow A, extractUserProfile. On the onboarding screen, paste a bio, or a LinkedIn or website URL, and trigger the build-profile action. This calls extractUserProfile. Watch the functions emulator log for the call, and watch the onboarding review step for the returned profile. After confirming on the review step, open the Firestore tab of the emulator user interface and inspect users/{your-uid} to see the written fields. This flow needs no seed data, because extractUserProfile does not read Firestore.
+
+Test Flow B, suggestRelationshipNeeds. On the create-event screen, enter a field such as FinTech and a description, and trigger the suggest-needs action. This calls suggestRelationshipNeeds, and the suggested needs appear in the form ready to edit. This flow also needs no seed data.
+
+Test Flow C, generateParticipants. This function rejects the call unless the signed-in user is the event's createdBy. The seeded events are owned by the seed ids user-001 and user-002, which will not match your auth uid, so the reliable way to test is to create your own event while signed in and then run the generate-linkages action on that event. The ten seeded users act as the candidate pool to be ranked. Watch the functions log for the call, then open suggestions/{your-event-id}/participants in the Firestore emulator user interface to see the ranked suggestions, along with the summary document at suggestions/{your-event-id}.
+
+The callable functions can also be invoked without the frontend using the functions shell, started with npm --prefix functions run shell, but onCall functions require an auth context to pass their sign-in check, so driving the flows from the frontend with the emulator wired up is the simpler way to run a full end-to-end test.
+
+
+Generated by Claude on 2026-05-16.
