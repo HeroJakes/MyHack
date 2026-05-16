@@ -236,7 +236,7 @@ function Step3Form({
             <div>
               <div className="mb-1.5 flex items-center">
                 <span className="text-sm font-semibold text-gray-800">
-                  Inferred Sector
+                  Industry / Sector
                 </span>
                 {isAiGenerated('inferredSector') && <AiBadge />}
               </div>
@@ -254,7 +254,7 @@ function Step3Form({
             <div>
               <div className="mb-1.5 flex items-center">
                 <span className="text-sm font-semibold text-gray-800">
-                  Inferred Expertise
+                  Skills & Expertise
                 </span>
                 {isAiGenerated('inferredExpertise') && <AiBadge />}
               </div>
@@ -273,7 +273,7 @@ function Step3Form({
               <div>
                 <div className="mb-1.5 flex items-center">
                   <span className="text-sm font-semibold text-gray-800">
-                    Inferred Stage
+                    Growth Stage
                   </span>
                   {isAiGenerated('inferredStage') && <AiBadge />}
                 </div>
@@ -325,7 +325,7 @@ function Step3Form({
             <div>
               <div className="mb-1.5 flex items-center">
                 <span className="text-sm font-semibold text-gray-800">
-                  Contribution Signals
+                  Possible Roles
                 </span>
                 {isAiGenerated('contributionSignals') && <AiBadge />}
               </div>
