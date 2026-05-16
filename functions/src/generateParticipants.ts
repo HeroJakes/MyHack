@@ -10,11 +10,47 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { buildParticipantPrompt } from './buildParticipantPrompt';
-import { callGemini } from './callGemini';
+import { callGemini, getGeminiModelName } from './callGemini';
 import type { Event, ParticipantSuggestion, RelationshipNeed, User } from './types';
 
 const REGION = 'asia-southeast1';
-const AI_TIMEOUT_MS = 45_000;
+const AI_TIMEOUT_MS = 90_000;
+const MAX_AI_CANDIDATES = 15;
+const PARTICIPANT_RESPONSE_SCHEMA = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  additionalProperties: false,
+  required: ['participants'],
+  properties: {
+    participants: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'userId',
+          'suggestedRole',
+          'relationshipType',
+          'reason',
+          'confidence',
+          'riskFlags',
+          'suggestedNextAction',
+          'rank',
+        ],
+        properties: {
+          userId: { type: 'string' },
+          suggestedRole: { type: 'string' },
+          relationshipType: { type: 'string' },
+          reason: { type: 'string' },
+          confidence: { type: 'integer', minimum: 0, maximum: 100 },
+          riskFlags: { type: 'array', items: { type: 'string' } },
+          suggestedNextAction: { type: 'string' },
+          rank: { type: 'integer', minimum: 1 },
+        },
+      },
+    },
+  },
+};
 
 /** Splits the event field into lowercase tokens used for the pre-filter. */
 function tokenize(field: string): string[] {
@@ -56,6 +92,55 @@ function scoreCandidate(user: User, tokens: string[]): number {
     .toLowerCase();
   const matches = tokens.filter((token) => haystack.includes(token)).length;
   return matches * 20 + Number(user.profileCompleteness ?? 0);
+}
+
+function fallbackConfidence(user: User, tokens: string[]): number {
+  const haystack = [
+    user.headline,
+    user.bio,
+    ...(user.inferredSector ?? []),
+    ...(user.inferredExpertise ?? []),
+    ...(user.contributionSignals ?? []),
+  ]
+    .join(' ')
+    .toLowerCase();
+  const matches = tokens.filter((token) => haystack.includes(token)).length;
+  const profileCompleteness = Math.max(
+    0,
+    Math.min(100, Number(user.profileCompleteness ?? 0)),
+  );
+  const signalCount = [
+    ...(user.inferredSector ?? []),
+    ...(user.inferredExpertise ?? []),
+    ...(user.contributionSignals ?? []),
+  ].filter(Boolean).length;
+  const tokenScore =
+    tokens.length === 0 ? 18 : Math.round((matches / tokens.length) * 34);
+  const profileScore = Math.round(profileCompleteness * 0.28);
+  const signalScore = Math.min(18, signalCount * 3);
+  return Math.max(25, Math.min(74, 20 + tokenScore + profileScore + signalScore));
+}
+
+function normalizeParticipantsPayload(parsed: any): any[] {
+  if (Array.isArray(parsed?.participants)) return parsed.participants;
+  if (Array.isArray(parsed?.recommendations)) return parsed.recommendations;
+  if (Array.isArray(parsed?.candidates)) return parsed.candidates;
+  if (Array.isArray(parsed)) return parsed;
+  throw new HttpsError(
+    'internal',
+    'Unexpected Gemini response shape for participants',
+  );
+}
+
+function normalizeConfidence(value: unknown): number {
+  const confidence = Number(value);
+  if (!Number.isFinite(confidence)) {
+    throw new HttpsError(
+      'internal',
+      'Gemini returned a participant without a numeric confidence score.',
+    );
+  }
+  return Math.max(0, Math.min(100, Math.round(confidence)));
 }
 
 function matchingSignals(user: User, tokens: string[]): string[] {
@@ -157,10 +242,7 @@ function fallbackSuggestions(
       const user = scored.find((candidate) => !used.has(candidate.id));
       if (!user) break;
       used.add(user.id);
-      const confidence = Math.max(
-        35,
-        Math.min(85, Math.round(scoreCandidate(user, tokens))),
-      );
+      const confidence = fallbackConfidence(user, tokens);
       suggestions.push({
         id: `${contextId}_${user.id}`,
         userId: user.id,
@@ -175,6 +257,8 @@ function fallbackSuggestions(
         suggestedNextAction: fallbackNextAction(need),
         rank: suggestions.length + 1,
         generatedAt,
+        confidenceSource: 'fallback',
+        recommendationSource: 'fallback',
       });
     }
   }
@@ -250,7 +334,13 @@ export const generateParticipants = onCall(
     });
     // Fall back to the full pool if the pre-filter is too aggressive.
     const candidates = preFiltered.length > 0 ? preFiltered : others;
-    const promptCandidates = candidates.map((u) => ({
+    const minimumSlots =
+      needs.reduce((total, need) => total + Math.max(1, Number(need.count ?? 1)), 0) +
+      2;
+    const aiCandidates = [...candidates]
+      .sort((a, b) => scoreCandidate(b, tokens) - scoreCandidate(a, tokens))
+      .slice(0, Math.max(Math.min(MAX_AI_CANDIDATES, candidates.length), minimumSlots));
+    const promptCandidates = aiCandidates.map((u) => ({
       id: u.id,
       summary: [
         u.headline,
@@ -263,20 +353,21 @@ export const generateParticipants = onCall(
         .filter(Boolean)
         .join(' | '),
     }));
+    console.info(
+      `generateParticipants: sending ${promptCandidates.length}/${candidates.length} candidates to Gemini for context ${contextId}.`,
+    );
 
     const generatedAt = Timestamp.now();
     const prompt = buildParticipantPrompt(event, needs, promptCandidates);
     let suggestions: ParticipantSuggestion[];
     try {
-      const parsed = await withTimeout(callGemini(prompt), AI_TIMEOUT_MS);
-      if (!parsed.participants || !Array.isArray(parsed.participants)) {
-        throw new HttpsError(
-          'internal',
-          'Unexpected Gemini response shape for participants',
-        );
-      }
+      const parsed = await withTimeout(
+        callGemini(prompt, { responseSchema: PARTICIPANT_RESPONSE_SCHEMA }),
+        AI_TIMEOUT_MS,
+      );
+      const participants = normalizeParticipantsPayload(parsed);
 
-      suggestions = parsed.participants.map((p: any, idx: number) => {
+      suggestions = participants.map((p: any, idx: number) => {
         const userId = String(p.userId ?? '');
         const matched = userMap.get(userId);
         return {
@@ -300,7 +391,7 @@ export const generateParticipants = onCall(
                     requirements: '',
                   }, tokens)
                 : 'This candidate matches the context needs based on their profile signals.',
-          confidence: Math.max(0, Math.min(100, Number(p.confidence ?? 0))),
+          confidence: normalizeConfidence(p.confidence),
           riskFlags: Array.isArray(p.riskFlags)
             ? p.riskFlags.map((r: any) => String(r))
             : [],
@@ -320,6 +411,9 @@ export const generateParticipants = onCall(
                 ),
           rank: Number(p.rank ?? idx + 1),
           generatedAt,
+          confidenceSource: 'gemini',
+          recommendationSource: 'gemini',
+          aiModel: getGeminiModelName(),
         };
       });
     } catch (err) {
@@ -340,6 +434,8 @@ export const generateParticipants = onCall(
     const batch = db.batch();
     const contextRef = db.collection('suggestions').doc(contextId);
     const participantsCol = contextRef.collection('participants');
+    const oldSuggestions = await participantsCol.get();
+    oldSuggestions.docs.forEach((doc) => batch.delete(doc.ref));
     suggestions.forEach((s) => batch.set(participantsCol.doc(s.id), s));
     batch.set(
       contextRef,
@@ -348,6 +444,12 @@ export const generateParticipants = onCall(
         contextName: event.name,
         count: suggestions.length,
         generatedAt,
+        confidenceSource:
+          suggestions.some((s) => s.confidenceSource === 'gemini')
+            ? 'gemini'
+            : 'fallback',
+        aiModel:
+          suggestions.find((s) => s.aiModel)?.aiModel ?? null,
       },
       { merge: true },
     );

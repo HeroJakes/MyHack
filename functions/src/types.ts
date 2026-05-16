@@ -138,6 +138,9 @@ export interface ParticipantSuggestion {
   suggestedNextAction: string;
   rank: number;
   generatedAt: TimestampValue;
+  confidenceSource?: 'gemini' | 'fallback';
+  recommendationSource?: 'gemini' | 'fallback';
+  aiModel?: string;
 }
 
 /** An invitation sent to a person for a specific context + role. */

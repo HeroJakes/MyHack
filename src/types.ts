@@ -160,6 +160,9 @@ export interface ParticipantSuggestion {
   suggestedNextAction: string;
   rank: number;
   generatedAt: TimestampValue;
+  confidenceSource?: 'gemini' | 'fallback';
+  recommendationSource?: 'gemini' | 'fallback';
+  aiModel?: string;
 }
 
 export interface Invite {

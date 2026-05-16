@@ -1296,13 +1296,26 @@ function AiRecommendationsTab({
                     </span>
                   </td>
                   <td className="px-2 py-3">
-                    <span
-                      className={`text-xs font-black ${confidenceColor(
-                        row.confidence,
-                      )}`}
-                    >
-                      {row.confidence}%
-                    </span>
+                    <div className="flex flex-col gap-1">
+                      <span
+                        className={`text-xs font-black ${confidenceColor(
+                          row.confidence,
+                        )}`}
+                      >
+                        {row.confidence}%
+                      </span>
+                      <span
+                        className={`w-fit rounded-full px-1.5 py-0.5 text-[9px] font-black ${
+                          row.confidenceSource === 'fallback'
+                            ? 'bg-amber-50 text-amber-700'
+                            : 'bg-blue-50 text-blue-700'
+                        }`}
+                      >
+                        {row.confidenceSource === 'fallback'
+                          ? 'Fallback'
+                          : 'AI'}
+                      </span>
+                    </div>
                   </td>
                   <td className="max-w-sm px-2 py-3">
                     <p className="text-xs font-medium text-slate-700">

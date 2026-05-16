@@ -12,7 +12,7 @@
  * shape; each caller owns that check.
  */
 import { GoogleGenAI } from '@google/genai';
-import type { ContentListUnion, Part } from '@google/genai';
+import type { ContentListUnion, GenerateContentConfig, Part } from '@google/genai';
 import { HttpsError } from 'firebase-functions/v2/https';
 
 const DEFAULT_MODEL = 'gemini-2.5-flash';
@@ -57,7 +57,7 @@ function normalizePrompt(prompt: GeminiPrompt): ContentListUnion {
   return typeof prompt === 'string' ? prompt : prompt;
 }
 
-function getModelName() {
+export function getGeminiModelName() {
   return process.env.GEMINI_MODEL?.trim() || DEFAULT_MODEL;
 }
 
@@ -70,21 +70,29 @@ function getModelName() {
  */
 export async function callGemini(
   prompt: GeminiPrompt,
+  config: Pick<GenerateContentConfig, 'responseSchema'> = {},
   attempt = 0,
 ): Promise<any> {
   let result;
   try {
     result = await getClient().models.generateContent({
-      model: getModelName(),
+      model: getGeminiModelName(),
       contents: normalizePrompt(prompt),
       config: {
         temperature: 0,
         responseMimeType: 'application/json',
+        ...config,
       },
     });
   } catch (err: any) {
     const status = Number(err?.status ?? err?.code);
     if (status === 400 || status === 3) {
+      if (config.responseSchema) {
+        console.warn(
+          'callGemini: Vertex AI rejected responseSchema; retrying without schema.',
+        );
+        return callGemini(prompt, {}, attempt);
+      }
       throw new HttpsError(
         'invalid-argument',
         'Vertex AI rejected the Gemini request configuration.',
@@ -120,7 +128,7 @@ export async function callGemini(
   } catch (err) {
     console.error(`callGemini: JSON parse failed on attempt ${attempt}`, err);
     if (attempt === 0) {
-      return callGemini(prompt, 1);
+      return callGemini(prompt, config, 1);
     }
     throw new HttpsError(
       'internal',
