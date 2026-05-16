@@ -27,7 +27,7 @@ import {
 } from '../lib/profileHelpers'
 import { InviteButton } from './ProfileCard'
 import type { InviteState } from './ProfileCard'
-import { Calendar, MapPin, MessageCircle, Shield, Sparkles, X } from './icons'
+import { Calendar, MapPin, Shield, Sparkles, X } from './icons'
 
 interface ProfileDrawerProps {
   user: User
@@ -298,14 +298,6 @@ export default function ProfileDrawer({
               onInvite={onInvite}
               label="Invite to Campaign"
             />
-            <button
-              type="button"
-              onClick={() => onToast('Messaging coming soon')}
-              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50"
-            >
-              <MessageCircle className="h-3.5 w-3.5" />
-              Message
-            </button>
           </div>
         </div>
 

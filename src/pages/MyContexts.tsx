@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { collection, onSnapshot, query, where } from 'firebase/firestore'
+import { collection, doc, getDoc, onSnapshot, query, where } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { useAuth } from '../contexts/AuthContext'
 import type { EcoEvent, EcosystemContext, EventStatus, Invite } from '../types'
@@ -186,6 +186,7 @@ function useMyContextRows() {
   const { user } = useAuth()
   const [eventRows, setEventRows] = useState<ContextRow[]>([])
   const [contextRows, setContextRows] = useState<ContextRow[]>([])
+  const [joinedRows, setJoinedRows] = useState<ContextRow[]>([])
   const [inviteCounts, setInviteCounts] = useState<InviteCounts>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -194,6 +195,7 @@ function useMyContextRows() {
     if (!user) {
       setEventRows([])
       setContextRows([])
+      setJoinedRows([])
       setInviteCounts({})
       setLoading(false)
       return
@@ -201,7 +203,7 @@ function useMyContextRows() {
 
     setLoading(true)
     setError('')
-    let pending = 3
+    let pending = 4
     const markLoaded = () => {
       pending -= 1
       if (pending === 0) setLoading(false)
@@ -217,6 +219,11 @@ function useMyContextRows() {
       where('createdBy', '==', user.uid),
     )
     const invitesQuery = query(collection(db, 'invites'), where('invitedBy', '==', user.uid))
+    const joinedInvitesQuery = query(
+      collection(db, 'invites'),
+      where('invitedUserId', '==', user.uid),
+      where('status', '==', 'confirmed'),
+    )
 
     const unsubscribeEvents = onSnapshot(
       eventsQuery,
@@ -253,10 +260,60 @@ function useMyContextRows() {
       (err) => fail(err.message),
     )
 
+    // Group 2: contexts the user has a CONFIRMED invitation to. Each invite's
+    // contextId is resolved to its context document (in `events` first, then
+    // `ecosystemContexts`).
+    let joinedSettled = false
+    const settleJoined = () => {
+      if (joinedSettled) return
+      joinedSettled = true
+      markLoaded()
+    }
+    const unsubscribeJoined = onSnapshot(
+      joinedInvitesQuery,
+      (snap) => {
+        const contextIds = [
+          ...new Set(snap.docs.map((d) => (d.data() as Invite).contextId)),
+        ].filter(Boolean)
+        Promise.all(
+          contextIds.map(async (contextId) => {
+            const eventSnap = await getDoc(doc(db, 'events', contextId))
+            if (eventSnap.exists()) {
+              return normalizeEvent({
+                id: eventSnap.id,
+                ...eventSnap.data(),
+              } as EcoEvent)
+            }
+            const contextSnap = await getDoc(
+              doc(db, 'ecosystemContexts', contextId),
+            )
+            if (contextSnap.exists()) {
+              return normalizeContext({
+                id: contextSnap.id,
+                ...contextSnap.data(),
+              } as EcosystemContext)
+            }
+            return null
+          }),
+        )
+          .then((resolved) => {
+            setJoinedRows(
+              resolved.filter((row): row is ContextRow => row !== null),
+            )
+          })
+          .catch((err) => {
+            console.error('MyContexts joined-contexts fetch error:', err)
+          })
+          .finally(settleJoined)
+      },
+      (err) => fail(err.message),
+    )
+
     return () => {
       unsubscribeEvents()
       unsubscribeContexts()
       unsubscribeInvites()
+      unsubscribeJoined()
     }
   }, [user])
 
@@ -271,7 +328,7 @@ function useMyContextRows() {
     [contextRows, eventRows],
   )
 
-  return { rows, inviteCounts, loading, error }
+  return { rows, joinedRows, inviteCounts, loading, error }
 }
 
 function ContextAvatar({ row }: { row: ContextRow }) {
@@ -302,33 +359,117 @@ function ContextAvatar({ row }: { row: ContextRow }) {
   )
 }
 
+/** Applies the active tab + search filter to a list of context rows. */
+function filterContextRows(
+  rows: ContextRow[],
+  activeTab: TabKey,
+  search: string,
+): ContextRow[] {
+  const active = TABS.find((tab) => tab.key === activeTab) ?? TABS[0]
+  const term = search.trim().toLowerCase()
+  return rows.filter((row) => {
+    const matchesTab = active.accepts(row)
+    const matchesSearch =
+      !term ||
+      [row.name, row.field, row.location, row.typeLabel].some((value) =>
+        value.toLowerCase().includes(term),
+      )
+    return matchesTab && matchesSearch
+  })
+}
+
+/** One context row — navigation only, no 3-dot actions menu. */
+function ContextRowItem({
+  row,
+  counts,
+}: {
+  row: ContextRow
+  counts: { confirmed: number; total: number }
+}) {
+  const status = statusLabel(row)
+  return (
+    <tr className="group transition hover:bg-slate-50/70">
+      <td className="px-4 py-3">
+        <Link to={`/contexts/${row.id}`} className="flex min-w-0 items-center gap-3">
+          <ContextAvatar row={row} />
+          <span className="min-w-0">
+            <span className="block truncate text-xs font-black text-slate-950">
+              {row.name}
+            </span>
+            <span className="mt-0.5 block truncate text-xs font-medium text-slate-500">
+              {row.location}
+            </span>
+          </span>
+        </Link>
+      </td>
+      <td className="px-4 py-3">
+        <span
+          className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-black ring-1 ring-inset ${TYPE_STYLES[row.contextType]}`}
+        >
+          {row.typeLabel}
+        </span>
+      </td>
+      <td className="px-4 py-3 text-xs font-medium text-slate-600">
+        {dateLabel(row)}
+      </td>
+      <td
+        className="px-4 py-3 text-xs font-black text-slate-900"
+        title={`${counts.total} invite${counts.total === 1 ? '' : 's'} sent`}
+      >
+        {counts.confirmed}
+      </td>
+      <td className="px-4 py-3">
+        <span
+          className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-black ${STATUS_STYLES[status]}`}
+        >
+          {status}
+        </span>
+      </td>
+      <td className="px-4 py-3">
+        <div className="flex items-center justify-end gap-2">
+          <Link
+            to={`/contexts/${row.id}`}
+            className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-blue-600"
+            aria-label={`Open ${row.name}`}
+            title={`Open ${row.name}`}
+          >
+            <Icon name="chevron" />
+          </Link>
+        </div>
+      </td>
+    </tr>
+  )
+}
+
 export default function MyContexts() {
-  const { rows, inviteCounts, loading, error } = useMyContextRows()
+  const { rows, joinedRows, inviteCounts, loading, error } = useMyContextRows()
   const [activeTab, setActiveTab] = useState<TabKey>('all')
   const [search, setSearch] = useState('')
+
+  // Group 2 (joined) minus anything the user also created — deduped by id.
+  const dedupedJoinedRows = useMemo(() => {
+    const createdIds = new Set(rows.map((row) => row.id))
+    return joinedRows.filter((row) => !createdIds.has(row.id))
+  }, [rows, joinedRows])
 
   const tabCounts = useMemo(
     () =>
       TABS.reduce<Record<TabKey, number>>((acc, tab) => {
-        acc[tab.key] = rows.filter(tab.accepts).length
+        acc[tab.key] = [...rows, ...dedupedJoinedRows].filter(tab.accepts).length
         return acc
       }, {} as Record<TabKey, number>),
-    [rows],
+    [rows, dedupedJoinedRows],
   )
 
-  const visibleRows = useMemo(() => {
-    const active = TABS.find((tab) => tab.key === activeTab) ?? TABS[0]
-    const term = search.trim().toLowerCase()
-    return rows.filter((row) => {
-      const matchesTab = active.accepts(row)
-      const matchesSearch =
-        !term ||
-        [row.name, row.field, row.location, row.typeLabel].some((value) =>
-          value.toLowerCase().includes(term),
-        )
-      return matchesTab && matchesSearch
-    })
-  }, [activeTab, rows, search])
+  const visibleRows = useMemo(
+    () => filterContextRows(rows, activeTab, search),
+    [activeTab, rows, search],
+  )
+  const visibleJoinedRows = useMemo(
+    () => filterContextRows(dedupedJoinedRows, activeTab, search),
+    [activeTab, dedupedJoinedRows, search],
+  )
+  const totalVisible = visibleRows.length + visibleJoinedRows.length
 
   return (
     <div className="mx-auto max-w-7xl space-y-5">
@@ -416,78 +557,48 @@ export default function MyContexts() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {visibleRows.length === 0 ? (
+                  {totalVisible === 0 ? (
                     <tr>
                       <td colSpan={6} className="px-5 py-12 text-center text-xs font-semibold text-slate-500">
                         {search ? 'No contexts match your search.' : 'No contexts yet. Create one to start.'}
                       </td>
                     </tr>
                   ) : (
-                    visibleRows.map((row) => {
-                      const status = statusLabel(row)
-                      const counts = inviteCounts[row.id] ?? { confirmed: 0, total: 0 }
-                      return (
-                        <tr key={`${row.source}-${row.id}`} className="group transition hover:bg-slate-50/70">
-                          <td className="px-4 py-3">
-                            <Link to={`/contexts/${row.id}`} className="flex min-w-0 items-center gap-3">
-                              <ContextAvatar row={row} />
-                              <span className="min-w-0">
-                                <span className="block truncate text-xs font-black text-slate-950">
-                                  {row.name}
-                                </span>
-                                <span className="mt-0.5 block truncate text-xs font-medium text-slate-500">
-                                  {row.location}
-                                </span>
-                              </span>
-                            </Link>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-black ring-1 ring-inset ${TYPE_STYLES[row.contextType]}`}>
-                              {row.typeLabel}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-xs font-medium text-slate-600">{dateLabel(row)}</td>
-                          <td
-                            className="px-4 py-3 text-xs font-black text-slate-900"
-                            title={`${counts.total} invite${counts.total === 1 ? '' : 's'} sent`}
-                          >
-                            {counts.confirmed}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-black ${STATUS_STYLES[status]}`}>
-                              {status}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center justify-end gap-2">
-                              <Link
-                                to={`/contexts/${row.id}`}
-                                className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-blue-600"
-                                aria-label={`Open ${row.name}`}
-                                title={`Open ${row.name}`}
-                              >
-                                <Icon name="chevron" />
-                              </Link>
-                              <button
-                                type="button"
-                                className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-                                aria-label={`More actions for ${row.name}`}
-                                title="More actions"
-                              >
-                                <Icon name="more" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })
+                    <>
+                      {visibleRows.map((row) => (
+                        <ContextRowItem
+                          key={`${row.source}-${row.id}`}
+                          row={row}
+                          counts={inviteCounts[row.id] ?? { confirmed: 0, total: 0 }}
+                        />
+                      ))}
+                      {visibleJoinedRows.length > 0 && (
+                        <>
+                          <tr>
+                            <td
+                              colSpan={6}
+                              className="bg-slate-50 px-4 py-2 text-[11px] font-black uppercase tracking-wide text-slate-500"
+                            >
+                              Contexts I Joined
+                            </td>
+                          </tr>
+                          {visibleJoinedRows.map((row) => (
+                            <ContextRowItem
+                              key={`joined-${row.source}-${row.id}`}
+                              row={row}
+                              counts={inviteCounts[row.id] ?? { confirmed: 0, total: 0 }}
+                            />
+                          ))}
+                        </>
+                      )}
+                    </>
                   )}
                 </tbody>
               </table>
             </div>
             <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-2.5">
               <span className="text-[11px] font-bold text-slate-500">
-                Showing {visibleRows.length === 0 ? 0 : 1} to {visibleRows.length} of {visibleRows.length} contexts
+                Showing {totalVisible === 0 ? 0 : 1} to {totalVisible} of {totalVisible} contexts
               </span>
               <div className="flex items-center gap-2">
                 <button

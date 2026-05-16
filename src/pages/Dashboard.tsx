@@ -290,7 +290,7 @@ function UpcomingContexts({ events }: { events: EcoEvent[] }) {
         return (
           <Link
             key={event.id}
-            to={`/events/${event.id}`}
+            to={`/contexts/${event.id}`}
             className="grid gap-3 py-3 first:pt-0 last:pb-0 sm:grid-cols-[48px_1fr_auto_auto] sm:items-center"
           >
             <div className="grid h-12 w-12 place-items-center rounded-xl bg-gradient-to-br from-blue-900 to-slate-800 text-[10px] font-black uppercase text-white">

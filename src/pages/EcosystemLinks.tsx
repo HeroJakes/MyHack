@@ -721,7 +721,7 @@ export default function EcosystemLinks() {
         <EcosystemLinkDetail
           link={isLoading ? null : selected}
           onMarkCompleted={handleMarkCompleted}
-          onViewContext={(contextId) => navigate(`/events/${contextId}`)}
+          onViewContext={(contextId) => navigate(`/contexts/${contextId}`)}
         />
       </div>
 

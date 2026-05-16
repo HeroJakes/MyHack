@@ -13,7 +13,6 @@ import {
   formatLinkDate,
 } from '../lib/badgeConfigs'
 import {
-  ArrowRight,
   Calendar,
   ExternalLink,
   Info,
@@ -104,14 +103,6 @@ export default function EcosystemLinkDetail({
           </p>
           <p className="truncate text-sm text-gray-500">{link.targetUserRole}</p>
         </div>
-        <button
-          type="button"
-          onClick={() => console.log('View profile of', link.targetUserId)}
-          className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-blue-600 hover:text-blue-700"
-        >
-          View Profile
-          <ArrowRight className="h-3.5 w-3.5" />
-        </button>
       </div>
 
       {/* Metadata grid. */}
