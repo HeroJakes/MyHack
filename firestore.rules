@@ -26,6 +26,13 @@ service cloud.firestore {
       allow update, delete: if isSignedIn() && resource.data.createdBy == request.auth.uid;
     }
 
+    // Generalized contexts: readable by any signed-in user. The organizer owns updates/deletes.
+    match /ecosystemContexts/{contextId} {
+      allow read: if isSignedIn();
+      allow create: if false;
+      allow update, delete: if isSignedIn() && resource.data.createdBy == request.auth.uid;
+    }
+
     // AI participant suggestions: visible only to the event organizer, written by backend only.
     match /suggestions/{contextId} {
       allow read: if isSignedIn() && eventCreatedBy(contextId) == request.auth.uid;

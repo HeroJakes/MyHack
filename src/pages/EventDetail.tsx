@@ -8,7 +8,7 @@
  *  - "Link tracking" lists the ecosystem links created for this context.
  */
 import { useEffect, useMemo, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import {
   collection,
   doc,
@@ -25,6 +25,7 @@ import type { EcoEvent, ParticipantSuggestion } from '../types'
 
 export default function EventDetail() {
   const { eventId } = useParams<{ eventId: string }>()
+  const navigate = useNavigate()
 
   const [event, setEvent] = useState<EcoEvent | null>(null)
   const [eventLoading, setEventLoading] = useState(true)
@@ -124,6 +125,7 @@ export default function EventDetail() {
         })),
       )
       setSelected(new Set())
+      navigate('/contexts')
     } catch {
       // Error surfaced via sendError below.
     }

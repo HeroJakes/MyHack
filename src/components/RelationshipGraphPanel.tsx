@@ -10,7 +10,9 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as d3 from 'd3'
+import { doc, onSnapshot } from 'firebase/firestore'
 import EcosystemLinkCard from './EcosystemLinkCard'
+import { db } from '../lib/firebase'
 import type { EcosystemLink } from '../types'
 
 interface RelationshipGraphPanelProps {
@@ -19,6 +21,7 @@ interface RelationshipGraphPanelProps {
 
 interface GraphNode extends d3.SimulationNodeDatum {
   id: string
+  label: string
 }
 
 interface GraphEdge extends d3.SimulationLinkDatum<GraphNode> {
@@ -30,20 +33,74 @@ type View = 'graph' | 'cards'
 const WIDTH = 640
 const HEIGHT = 420
 
+type Profile = {
+  name: string
+}
+
+function linkedNode(value: string | number | GraphNode): GraphNode | null {
+  return typeof value === 'object' && value !== null ? value : null
+}
+
+function graphLabel(value: string): string {
+  if (!value) return 'User'
+  return value.length > 14 ? `${value.slice(0, 13)}...` : value
+}
+
+function useProfiles(ids: string[]) {
+  const [profiles, setProfiles] = useState<Record<string, Profile>>({})
+  const stableIds = useMemo(() => Array.from(new Set(ids.filter(Boolean))), [ids])
+
+  useEffect(() => {
+    if (stableIds.length === 0) {
+      setProfiles({})
+      return
+    }
+
+    const unsubscribers = stableIds.map((id) =>
+      onSnapshot(doc(db, 'users', id), (snap) => {
+        const data = snap.data()
+        setProfiles((current) => ({
+          ...current,
+          [id]: {
+            name: data?.name || data?.email?.split('@')[0] || 'User',
+          },
+        }))
+      }),
+    )
+
+    return () => {
+      unsubscribers.forEach((unsubscribe) => unsubscribe())
+    }
+  }, [stableIds])
+
+  return profiles
+}
+
 export default function RelationshipGraphPanel({
   links,
 }: RelationshipGraphPanelProps) {
   const [view, setView] = useState<View>('graph')
   const svgRef = useRef<SVGSVGElement | null>(null)
+  const profileIds = useMemo(
+    () => links.flatMap((link) => [link.sourceUserId, link.targetUserId]),
+    [links],
+  )
+  const profiles = useProfiles(profileIds)
 
   const { nodes, edges } = useMemo(() => {
     const nodeMap = new Map<string, GraphNode>()
     for (const link of links) {
       if (!nodeMap.has(link.sourceUserId)) {
-        nodeMap.set(link.sourceUserId, { id: link.sourceUserId })
+        nodeMap.set(link.sourceUserId, {
+          id: link.sourceUserId,
+          label: profiles[link.sourceUserId]?.name || 'User',
+        })
       }
       if (!nodeMap.has(link.targetUserId)) {
-        nodeMap.set(link.targetUserId, { id: link.targetUserId })
+        nodeMap.set(link.targetUserId, {
+          id: link.targetUserId,
+          label: profiles[link.targetUserId]?.name || 'User',
+        })
       }
     }
     return {
@@ -54,7 +111,7 @@ export default function RelationshipGraphPanel({
         type: link.relationshipType,
       })),
     }
-  }, [links])
+  }, [links, profiles])
 
   useEffect(() => {
     if (view !== 'graph' || !svgRef.current || nodes.length === 0) return
@@ -116,7 +173,7 @@ export default function RelationshipGraphPanel({
 
     nodeGroup
       .append('text')
-      .text((d) => d.id.replace(/^user-/, ''))
+      .text((d) => graphLabel(d.label))
       .attr('text-anchor', 'middle')
       .attr('dy', 4)
       .attr('fill', '#fff')
@@ -125,10 +182,10 @@ export default function RelationshipGraphPanel({
 
     simulation.on('tick', () => {
       edgeSelection
-        .attr('x1', (d) => (d.source as GraphNode).x ?? 0)
-        .attr('y1', (d) => (d.source as GraphNode).y ?? 0)
-        .attr('x2', (d) => (d.target as GraphNode).x ?? 0)
-        .attr('y2', (d) => (d.target as GraphNode).y ?? 0)
+        .attr('x1', (d) => linkedNode(d.source)?.x ?? 0)
+        .attr('y1', (d) => linkedNode(d.source)?.y ?? 0)
+        .attr('x2', (d) => linkedNode(d.target)?.x ?? 0)
+        .attr('y2', (d) => linkedNode(d.target)?.y ?? 0)
       nodeGroup.attr('transform', (d) => `translate(${d.x ?? 0},${d.y ?? 0})`)
     })
 

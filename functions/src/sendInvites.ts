@@ -25,11 +25,18 @@ export const sendInvites = onCall({ region: REGION }, async (request) => {
   }
 
   const db = getFirestore();
-  const eventSnap = await db.collection('events').doc(contextId).get();
-  if (!eventSnap.exists) {
-    throw new HttpsError('not-found', `Event ${contextId} was not found.`);
+  let contextRef = db.collection('events').doc(contextId);
+  let contextSnap = await contextRef.get();
+  let isEcosystemContext = false;
+  if (!contextSnap.exists) {
+    contextRef = db.collection('ecosystemContexts').doc(contextId);
+    contextSnap = await contextRef.get();
+    isEcosystemContext = true;
   }
-  const event = { id: eventSnap.id, ...eventSnap.data() } as Event;
+  if (!contextSnap.exists) {
+    throw new HttpsError('not-found', `Context ${contextId} was not found.`);
+  }
+  const event = { id: contextSnap.id, ...contextSnap.data() } as Event;
   if (event.createdBy !== uid) {
     throw new HttpsError(
       'permission-denied',
@@ -65,6 +72,11 @@ export const sendInvites = onCall({ region: REGION }, async (request) => {
     };
     batch.set(ref, invite);
     return invite;
+  });
+
+  batch.update(contextRef, {
+    status: 'open',
+    ...(isEcosystemContext ? { updatedAt: sentAt } : {}),
   });
 
   await batch.commit();

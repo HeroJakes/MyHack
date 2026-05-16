@@ -11,9 +11,10 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { buildParticipantPrompt } from './buildParticipantPrompt';
 import { callGemini } from './callGemini';
-import type { Event, ParticipantSuggestion, User } from './types';
+import type { Event, ParticipantSuggestion, RelationshipNeed, User } from './types';
 
 const REGION = 'asia-southeast1';
+const AI_TIMEOUT_MS = 45_000;
 
 /** Splits the event field into lowercase tokens used for the pre-filter. */
 function tokenize(field: string): string[] {
@@ -24,8 +25,149 @@ function tokenize(field: string): string[] {
     .filter((t) => t.length > 1);
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout>;
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    timeout = setTimeout(
+      () =>
+        reject(
+          new HttpsError(
+            'deadline-exceeded',
+            'Gemini participant generation timed out.',
+          ),
+        ),
+      ms,
+    );
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() =>
+    clearTimeout(timeout),
+  );
+}
+
+function scoreCandidate(user: User, tokens: string[]): number {
+  const haystack = [
+    user.headline,
+    user.bio,
+    ...(user.inferredSector ?? []),
+    ...(user.inferredExpertise ?? []),
+    ...(user.contributionSignals ?? []),
+  ]
+    .join(' ')
+    .toLowerCase();
+  const matches = tokens.filter((token) => haystack.includes(token)).length;
+  return matches * 20 + Number(user.profileCompleteness ?? 0);
+}
+
+function matchingSignals(user: User, tokens: string[]): string[] {
+  const signals = [
+    ...(user.inferredSector ?? []),
+    ...(user.inferredExpertise ?? []),
+    ...(user.contributionSignals ?? []),
+  ];
+  const seen = new Set<string>();
+  const haystackBySignal = signals.map((signal) => ({
+    signal,
+    text: signal.toLowerCase(),
+  }));
+
+  for (const token of tokens) {
+    for (const { signal, text } of haystackBySignal) {
+      if (text.includes(token) && !seen.has(signal)) {
+        seen.add(signal);
+      }
+    }
+  }
+
+  if (seen.size === 0) {
+    for (const signal of signals) {
+      if (signal && !seen.has(signal)) seen.add(signal);
+      if (seen.size >= 3) break;
+    }
+  }
+
+  return [...seen].slice(0, 3);
+}
+
+function fallbackReason(user: User, need: RelationshipNeed, tokens: string[]) {
+  const signals = matchingSignals(user, tokens);
+  const signalText =
+    signals.length > 0
+      ? signals.join(', ')
+      : user.headline || 'their profile background';
+  const requirement = need.requirements?.trim();
+  const requirementText = requirement
+    ? ` and fits the need for ${requirement.charAt(0).toLowerCase()}${requirement.slice(1)}`
+    : '';
+
+  return `${user.name} is recommended for the ${need.role} role because their profile shows ${signalText}${requirementText}.`;
+}
+
+function fallbackNextAction(need: RelationshipNeed) {
+  if (need.role === 'Mentor') return 'Send intro invite';
+  if (need.role === 'Service Provider') return 'Send service provider invite';
+  if (need.role === 'Programme Admin') return 'Invite to coordinate';
+  if (need.role === 'Startup/Company') return 'Invite as participant';
+  return 'Send partnership invite';
+}
+
+function fallbackSuggestions(
+  contextId: string,
+  needs: RelationshipNeed[],
+  candidates: User[],
+  tokens: string[],
+  generatedAt: Timestamp,
+): ParticipantSuggestion[] {
+  const scored = [...candidates].sort(
+    (a, b) => scoreCandidate(b, tokens) - scoreCandidate(a, tokens),
+  );
+  const fallbackNeeds =
+    needs.length > 0
+      ? needs
+      : [
+          {
+            role: 'Partner',
+            count: Math.min(5, scored.length),
+            relationshipType: 'partner_linkage',
+            requirements: 'Best available fit for this context.',
+          } satisfies RelationshipNeed,
+        ];
+
+  const used = new Set<string>();
+  const suggestions: ParticipantSuggestion[] = [];
+
+  for (const need of fallbackNeeds) {
+    const slots = Math.max(1, Math.round(Number(need.count ?? 1)));
+    for (let i = 0; i < slots; i++) {
+      const user = scored.find((candidate) => !used.has(candidate.id));
+      if (!user) break;
+      used.add(user.id);
+      const confidence = Math.max(
+        35,
+        Math.min(85, Math.round(scoreCandidate(user, tokens))),
+      );
+      suggestions.push({
+        id: `${contextId}_${user.id}`,
+        userId: user.id,
+        name: user.name ?? '',
+        photoURL: user.photoURL ?? '',
+        headline: user.headline ?? '',
+        suggestedRole: need.role,
+        relationshipType: need.relationshipType,
+        reason: fallbackReason(user, need, tokens),
+        confidence,
+        riskFlags: confidence < 55 ? ['Review fit manually'] : [],
+        suggestedNextAction: fallbackNextAction(need),
+        rank: suggestions.length + 1,
+        generatedAt,
+      });
+    }
+  }
+
+  return suggestions;
+}
+
 export const generateParticipants = onCall(
-  { region: REGION },
+  { region: REGION, cors: true, timeoutSeconds: 180 },
   async (request) => {
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'You must be signed in.');
@@ -70,7 +212,12 @@ export const generateParticipants = onCall(
       (d) => ({ id: d.id, ...d.data() }) as User,
     );
     const userMap = new Map(allUsers.map((u) => [u.id, u]));
-    const needs = event.roleRequirements ?? [];
+    const rawNeeds =
+      event.roleRequirements ??
+      ((event as unknown as { relationshipNeeds?: RelationshipNeed[] })
+        .relationshipNeeds ??
+        []);
+    const needs = rawNeeds;
 
     // Rule pre-filter: candidates whose sector/expertise overlaps the field.
     const tokens = tokenize(event.field ?? '');
@@ -101,18 +248,19 @@ export const generateParticipants = onCall(
         .join(' | '),
     }));
 
-    const prompt = buildParticipantPrompt(event, needs, promptCandidates);
-    const parsed = await callGemini(prompt);
-    if (!parsed.participants || !Array.isArray(parsed.participants)) {
-      throw new HttpsError(
-        'internal',
-        'Unexpected Gemini response shape for participants',
-      );
-    }
-
     const generatedAt = Timestamp.now();
-    const suggestions: ParticipantSuggestion[] = parsed.participants.map(
-      (p: any, idx: number) => {
+    const prompt = buildParticipantPrompt(event, needs, promptCandidates);
+    let suggestions: ParticipantSuggestion[];
+    try {
+      const parsed = await withTimeout(callGemini(prompt), AI_TIMEOUT_MS);
+      if (!parsed.participants || !Array.isArray(parsed.participants)) {
+        throw new HttpsError(
+          'internal',
+          'Unexpected Gemini response shape for participants',
+        );
+      }
+
+      suggestions = parsed.participants.map((p: any, idx: number) => {
         const userId = String(p.userId ?? '');
         const matched = userMap.get(userId);
         return {
@@ -133,8 +281,20 @@ export const generateParticipants = onCall(
           rank: Number(p.rank ?? idx + 1),
           generatedAt,
         };
-      },
-    );
+      });
+    } catch (err) {
+      console.warn(
+        'generateParticipants: AI ranking unavailable; returning fallback suggestions.',
+        err,
+      );
+      suggestions = fallbackSuggestions(
+        contextId,
+        needs,
+        candidates,
+        tokens,
+        generatedAt,
+      );
+    }
 
     // Batch write the suggestions plus a summary doc on the context.
     const batch = db.batch();

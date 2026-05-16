@@ -17,7 +17,7 @@ import { HttpsError } from 'firebase-functions/v2/https';
 
 const DEFAULT_MODEL = 'gemini-3.1-pro-preview';
 const DEFAULT_LOCATION = 'global';
-const DEFAULT_PROJECT = 'myhack-c753f';
+const DEFAULT_PROJECT = 'eminent-subset-496500-h4';
 
 /** A prompt is either plain text or an ordered list of multimodal parts. */
 export type GeminiPrompt = string | Array<string | Part>;
@@ -25,17 +25,27 @@ export type GeminiPrompt = string | Array<string | Part>;
 let client: GoogleGenAI | null = null;
 
 function getProjectId(): string {
-  return (
+  const projectId =
+    process.env.VERTEX_AI_PROJECT?.trim() ||
+    process.env.GEMINI_PROJECT?.trim() ||
+    DEFAULT_PROJECT ||
     process.env.GOOGLE_CLOUD_PROJECT?.trim() ||
     process.env.GCLOUD_PROJECT?.trim() ||
-    process.env.GCP_PROJECT?.trim() ||
-    DEFAULT_PROJECT
-  );
+    process.env.GCP_PROJECT?.trim();
+  if (!projectId) {
+    throw new HttpsError('internal', 'Vertex AI project is not configured.');
+  }
+  return projectId;
 }
 
 /** Builds the Vertex AI Gemini client at invocation time. */
 function getClient() {
   if (!client) {
+    console.info(
+      `callGemini: using Vertex AI project=${getProjectId()} location=${
+        process.env.GOOGLE_CLOUD_LOCATION?.trim() || DEFAULT_LOCATION
+      }`,
+    );
     client = new GoogleGenAI({
       vertexai: true,
       project: getProjectId(),
@@ -76,6 +86,12 @@ export async function callGemini(
     });
   } catch (err: any) {
     const status = Number(err?.status ?? err?.code);
+    if (status === 400 || status === 3) {
+      throw new HttpsError(
+        'invalid-argument',
+        'Vertex AI rejected the Gemini request configuration.',
+      );
+    }
     if (status === 429 || status === 8) {
       throw new HttpsError(
         'resource-exhausted',

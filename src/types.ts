@@ -113,6 +113,34 @@ export interface EcoEvent {
   eventDate?: TimestampValue;
 }
 
+export type ContextType =
+  | 'Event'
+  | 'Programme'
+  | 'Initiative'
+  | 'Cohort'
+  | 'CountryExpansion';
+
+export type LocationType = 'Physical' | 'Virtual' | 'Hybrid';
+
+export interface EcosystemContext {
+  id: string;
+  name: string;
+  contextType: ContextType;
+  field: string;
+  description: string;
+  locationType: LocationType;
+  location: string;
+  imageUrl?: string;
+  startDate: TimestampValue;
+  endDate: TimestampValue;
+  status: EventStatus;
+  targetOutcomes: string[];
+  relationshipNeeds: RelationshipNeed[];
+  createdBy: string;
+  createdAt: TimestampValue;
+  updatedAt: TimestampValue;
+}
+
 export interface ParticipantSuggestion {
   id: string;
   userId: string;

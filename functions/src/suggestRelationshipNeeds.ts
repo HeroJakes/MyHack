@@ -93,6 +93,7 @@ export const suggestRelationshipNeeds = onCall(
       if (
         err instanceof HttpsError &&
         (err.code === 'resource-exhausted' ||
+          err.code === 'invalid-argument' ||
           err.code === 'permission-denied' ||
           err.code === 'unavailable')
       ) {

@@ -580,6 +580,7 @@ export default function ContextDetail() {
           chosen.length === 1 ? '' : 's'
         }.`,
       })
+      navigate('/contexts')
     } catch (err) {
       setToast({
         type: 'error',
