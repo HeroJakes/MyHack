@@ -13,11 +13,7 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { buildParticipantPrompt } from './buildParticipantPrompt';
-<<<<<<< Updated upstream
 import { callGemini, getGeminiModelName } from './callGemini';
-import type { Event, ParticipantSuggestion, RelationshipNeed, User } from './types';
-=======
-import { callGemini } from './callGemini';
 import type {
   EcosystemLink,
   Event,
@@ -26,7 +22,6 @@ import type {
   RelationshipNeed,
   User,
 } from './types';
->>>>>>> Stashed changes
 
 const REGION = 'asia-southeast1';
 const AI_TIMEOUT_MS = 90_000;
@@ -109,7 +104,6 @@ function scoreCandidate(user: User, tokens: string[]): number {
   return matches * 20 + Number(user.profileCompleteness ?? 0);
 }
 
-<<<<<<< Updated upstream
 function fallbackConfidence(user: User, tokens: string[]): number {
   const haystack = [
     user.headline,
@@ -157,7 +151,8 @@ function normalizeConfidence(value: unknown): number {
     );
   }
   return Math.max(0, Math.min(100, Math.round(confidence)));
-=======
+}
+
 /**
  * History-aware candidate score: profile completeness + sector/expertise
  * overlap + a boost from the average outcomeScore of the candidate's past
@@ -196,7 +191,6 @@ function historyAwareScore(
   }
 
   return score;
->>>>>>> Stashed changes
 }
 
 function matchingSignals(user: User, tokens: string[]): string[] {
@@ -390,28 +384,6 @@ export const generateParticipants = onCall(
     // already invited, require a usable profile, then rank by the link graph
     // and keep the top 30 candidates.
     const tokens = tokenize(event.field ?? '');
-<<<<<<< Updated upstream
-    const others = allUsers.filter((u) => u.id !== event.createdBy);
-    const preFiltered = others.filter((u) => {
-      if (tokens.length === 0) return true;
-      const haystack = [
-        ...(u.inferredSector ?? []),
-        ...(u.inferredExpertise ?? []),
-      ]
-        .join(' ')
-        .toLowerCase();
-      return tokens.some((t) => haystack.includes(t));
-    });
-    // Fall back to the full pool if the pre-filter is too aggressive.
-    const candidates = preFiltered.length > 0 ? preFiltered : others;
-    const minimumSlots =
-      needs.reduce((total, need) => total + Math.max(1, Number(need.count ?? 1)), 0) +
-      2;
-    const aiCandidates = [...candidates]
-      .sort((a, b) => scoreCandidate(b, tokens) - scoreCandidate(a, tokens))
-      .slice(0, Math.max(Math.min(MAX_AI_CANDIDATES, candidates.length), minimumSlots));
-    const promptCandidates = aiCandidates.map((u) => ({
-=======
     const invitedUserIds = new Set(
       invitesSnap.docs.map((d) => (d.data() as Invite).invitedUserId),
     );
@@ -426,8 +398,14 @@ export const generateParticipants = onCall(
       .sort((a, b) => b.score - a.score)
       .slice(0, 30)
       .map(({ user }) => user);
-    const promptCandidates = candidates.map((u) => ({
->>>>>>> Stashed changes
+    const minimumSlots =
+      needs.reduce((total, need) => total + Math.max(1, Number(need.count ?? 1)), 0) +
+      2;
+    const aiCandidates = candidates.slice(
+      0,
+      Math.max(Math.min(MAX_AI_CANDIDATES, candidates.length), minimumSlots),
+    );
+    const promptCandidates = aiCandidates.map((u) => ({
       id: u.id,
       summary: [
         u.headline,
@@ -459,12 +437,9 @@ export const generateParticipants = onCall(
       );
       const participants = normalizeParticipantsPayload(parsed);
 
-<<<<<<< Updated upstream
-      suggestions = participants.map((p: any, idx: number) => {
-=======
       // Code-level hallucination guard — drop any userId Gemini invented.
-      const validUserIds = new Set(candidates.map((u) => u.id));
-      const validatedParticipants = parsed.participants.filter(
+      const validUserIds = new Set(aiCandidates.map((u) => u.id));
+      const validatedParticipants = participants.filter(
         (p: { userId: string }) => {
           if (!validUserIds.has(p.userId)) {
             console.warn(
@@ -477,7 +452,6 @@ export const generateParticipants = onCall(
       );
 
       suggestions = validatedParticipants.map((p: any, idx: number) => {
->>>>>>> Stashed changes
         const userId = String(p.userId ?? '');
         const matched = userMap.get(userId);
         return {
