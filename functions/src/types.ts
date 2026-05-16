@@ -81,10 +81,15 @@ export interface Event {
   type: string;
   field: string;
   description: string;
+  locationType?: LocationType;
+  location?: string;
+  imageUrl?: string;
+  targetOutcomes?: string[];
   createdBy: string;
   roleRequirements: RelationshipNeed[];
   status: EventStatus;
   createdAt: TimestampValue;
+  updatedAt?: TimestampValue;
   eventDate?: TimestampValue;
 }
 

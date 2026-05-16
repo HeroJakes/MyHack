@@ -103,10 +103,13 @@ function normalizeEvent(event: EcoEvent): ContextRow {
     contextType: 'Event',
     typeLabel: event.type || 'Event',
     field: event.field,
-    location: event.field || 'Ecosystem context',
+    location:
+      event.location ||
+      (event.locationType === 'Virtual' ? 'Virtual Event' : event.field || 'Ecosystem context'),
     startDate: event.eventDate,
     createdAt: event.createdAt,
     status: event.status,
+    imageUrl: event.imageUrl,
     needsCount: event.roleRequirements?.reduce((sum, need) => sum + need.count, 0) ?? 0,
     source: 'events',
   }
