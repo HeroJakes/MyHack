@@ -43,6 +43,10 @@ function toMessage(err: unknown): string {
     if (message) return message
     return 'A required Firebase service is not configured yet. Please check Firestore setup.'
   }
+  if (code.includes('resource-exhausted')) {
+    if (message) return message
+    return 'Gemini quota is exhausted. Please try again later.'
+  }
   if (code.includes('internal')) {
     if (message) return message
     return "Gemini couldn't read that profile automatically."

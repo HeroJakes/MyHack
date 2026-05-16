@@ -15,9 +15,8 @@ import { GoogleGenAI } from '@google/genai';
 import type { ContentListUnion, Part } from '@google/genai';
 import { HttpsError } from 'firebase-functions/v2/https';
 
-const DEFAULT_MODEL = 'gemini-3.1-pro-preview';
+const DEFAULT_MODEL = 'gemini-2.5-flash';
 const DEFAULT_LOCATION = 'global';
-const DEFAULT_PROJECT = 'eminent-subset-496500-h4';
 
 /** A prompt is either plain text or an ordered list of multimodal parts. */
 export type GeminiPrompt = string | Array<string | Part>;
@@ -28,7 +27,6 @@ function getProjectId(): string {
   const projectId =
     process.env.VERTEX_AI_PROJECT?.trim() ||
     process.env.GEMINI_PROJECT?.trim() ||
-    DEFAULT_PROJECT ||
     process.env.GOOGLE_CLOUD_PROJECT?.trim() ||
     process.env.GCLOUD_PROJECT?.trim() ||
     process.env.GCP_PROJECT?.trim();
@@ -95,7 +93,7 @@ export async function callGemini(
     if (status === 429 || status === 8) {
       throw new HttpsError(
         'resource-exhausted',
-        'Vertex AI Gemini quota is exhausted. Please try again later.',
+        'Gemini quota is exhausted. Please try again later or enable billing / increase quota for this Firebase project.',
       );
     }
     if (status === 403 || status === 7) {
