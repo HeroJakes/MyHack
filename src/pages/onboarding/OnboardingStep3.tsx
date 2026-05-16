@@ -120,23 +120,36 @@ function Step3Form({
   }
 
   async function handleSave() {
-    if (!user) return
+    if (!user) {
+      setSaveError('Please sign in again before saving your profile.')
+      return
+    }
     setSaving(true)
     setSaveError('')
 
-    const payload = {
-      headline: form.headline.trim(),
-      bio: form.bio.trim(),
-      inferredSector: dedupe(form.inferredSector),
-      inferredExpertise: dedupe(form.inferredExpertise),
-      inferredStage: form.inferredStage,
-      contributionSignals: dedupe(form.contributionSignals),
-      profileCompleteness: form.profileCompleteness,
-      onboardingComplete: true,
-      updatedAt: serverTimestamp(),
-    }
+    const userRef = doc(db, 'users', user.uid)
 
     try {
+      const payload = {
+        id: user.uid,
+        name: user.displayName ?? user.email?.split('@')[0] ?? 'New Member',
+        email: user.email ?? '',
+        photoURL: user.photoURL ?? '',
+        headline: form.headline.trim(),
+        bio: form.bio.trim(),
+        inferredSector: dedupe(form.inferredSector),
+        inferredExpertise: dedupe(form.inferredExpertise),
+        inferredStage: form.inferredStage,
+        contributionSignals: dedupe(form.contributionSignals),
+        profileCompleteness: Math.max(
+          0,
+          Math.min(100, Math.round(form.profileCompleteness)),
+        ),
+        onboardingComplete: true,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }
+
       setEditedProfile({
         headline: payload.headline,
         bio: payload.bio,
@@ -146,7 +159,7 @@ function Step3Form({
         contributionSignals: payload.contributionSignals,
         profileCompleteness: payload.profileCompleteness,
       })
-      await setDoc(doc(db, 'users', user.uid), payload, { merge: true })
+      await setDoc(userRef, payload, { merge: true })
       navigate('/dashboard', { replace: true })
     } catch (err) {
       setSaveError(
