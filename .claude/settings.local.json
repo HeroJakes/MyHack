@@ -6,9 +6,7 @@
       "Bash(npm run *)",
       "Bash(npx tsc *)",
       "Bash(echo \"exit: $?\")",
-      "mcp__ide__getDiagnostics",
-      "Bash(npx eslint *)",
-      "Bash(grep -vE \"functions[\\\\\\\\\\\\\\\\/]lib\")"
+      "mcp__ide__getDiagnostics"
     ]
   }
 }
