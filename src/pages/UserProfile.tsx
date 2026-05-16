@@ -4,8 +4,7 @@ import { collection, doc, onSnapshot, query, where } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { useAuth } from '../contexts/AuthContext'
 import { useEcosystemLinks } from '../hooks/useEcosystemLinks'
-import type { ResolvedEcosystemLink } from '../hooks/useEcosystemLinks'
-import type { Invite, User as ProfileUser } from '../types'
+import type { EcosystemLink, Invite, User as ProfileUser } from '../types'
 
 type ProfileState = {
   profile: ProfileUser | null
@@ -26,7 +25,6 @@ const fallbackTags = ['Profile setup in progress']
 
 function toMillis(value: unknown): number {
   if (!value) return 0
-  if (value instanceof Date) return value.getTime()
   const ts = value as { toMillis?: () => number; seconds?: number }
   if (typeof ts.toMillis === 'function') return ts.toMillis()
   if (typeof ts.seconds === 'number') return ts.seconds * 1000
@@ -263,10 +261,7 @@ function RoleAccentIcon({ accent }: { accent: RecentRole['accent'] }) {
   )
 }
 
-function buildRecentRoles(
-  invites: Invite[],
-  links: ResolvedEcosystemLink[],
-): RecentRole[] {
+function buildRecentRoles(invites: Invite[], links: EcosystemLink[]): RecentRole[] {
   const inviteRoles = invites.map((invite, index) => ({
     id: `invite-${invite.id}`,
     context: invite.contextName || 'Untitled context',
@@ -300,7 +295,7 @@ function buildRecentRoles(
 export default function UserProfile() {
   const { profile, loading, error } = useUserProfile()
   const { invites, loading: invitesLoading } = useRecentInvites()
-  const { links, isLoading: linksLoading } = useEcosystemLinks()
+  const { links, loading: linksLoading } = useEcosystemLinks()
 
   const recentRoles = useMemo(
     () => buildRecentRoles(invites, links),

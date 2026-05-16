@@ -1,14 +1,14 @@
 /**
- * RelationshipGraph — standalone view of the ecosystem relationship graph.
+ * RelationshipGraph — the standalone EcosystemLink view.
  *
- * Renders the live D3 `RelationshipGraphPanel`. The full link table and
- * detail panel live on the richer `/ecosystem-links` page.
+ * Renders the user's reusable ecosystem relationships via
+ * RelationshipGraphPanel (graph or card view).
  */
 import { useEcosystemLinks } from '../hooks/useEcosystemLinks'
 import RelationshipGraphPanel from '../components/RelationshipGraphPanel'
 
 export default function RelationshipGraph() {
-  const { links, isLoading, error } = useEcosystemLinks()
+  const { links, loading, error } = useEcosystemLinks()
 
   return (
     <div>
@@ -18,14 +18,21 @@ export default function RelationshipGraph() {
         matches.
       </p>
 
-      {error && (
-        <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
-          {error}
-        </p>
-      )}
-
       <div className="mt-5">
-        <RelationshipGraphPanel links={links} isLoading={isLoading} />
+        {loading && (
+          <div className="flex items-center gap-2 py-8 text-sm text-gray-500">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-200 border-t-blue-600" />
+            Loading ecosystem links…
+          </div>
+        )}
+
+        {error && (
+          <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
+            {error}
+          </p>
+        )}
+
+        {!loading && !error && <RelationshipGraphPanel links={links} />}
       </div>
     </div>
   )
