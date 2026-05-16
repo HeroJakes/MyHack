@@ -112,6 +112,15 @@ function OnboardingRoute({ children }: { children: ReactNode }) {
   return <>{children}</>
 }
 
+function RootRoute() {
+  const { user, loading, onboardingComplete, profileLoading } = useAuth()
+  if (loading) return <FullScreenLoader />
+  if (!user) return <Navigate to="/login" replace />
+  if (profileLoading) return <FullScreenLoader />
+  if (!onboardingComplete) return <Navigate to="/onboarding/step1" replace />
+  return <Navigate to="/dashboard" replace />
+}
+
 export default function App() {
   return (
     <Routes>
@@ -145,11 +154,7 @@ export default function App() {
 
       <Route
         path="/"
-        element={
-          <PrivateRoute>
-            <Dashboard />
-          </PrivateRoute>
-        }
+        element={<RootRoute />}
       />
       <Route
         path="/dashboard"

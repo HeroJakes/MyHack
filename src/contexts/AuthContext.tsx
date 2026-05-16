@@ -153,7 +153,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (email: string, password: string) => {
       setError('')
       try {
-        await createUserWithEmailAndPassword(auth, email, password)
+        const credential = await createUserWithEmailAndPassword(
+          auth,
+          email,
+          password,
+        )
+        await ensureUserDocument(credential.user)
+        await signOut(auth)
       } catch (err) {
         setError(toMessage(err, 'Could not create that account.'))
         throw err
