@@ -9,7 +9,8 @@
  * authenticated user) — see `firestore.rules`.
  */
 import { useEffect, useMemo, useState } from 'react'
-import { collection, onSnapshot, orderBy, query } from 'firebase/firestore'
+import { collection, onSnapshot, query, where } from 'firebase/firestore'
+import { useAuth } from '../contexts/AuthContext'
 import { db } from '../lib/firebase'
 import type { EcosystemLinkStatus, RelationshipType } from '../types'
 
@@ -70,26 +71,78 @@ function asStringArray(value: unknown): string[] {
 }
 
 export function useEcosystemLinks() {
+  const { user, loading: authLoading } = useAuth()
+  const userId = user?.uid
   const [rawLinks, setRawLinks] = useState<RawDoc[]>([])
   const [users, setUsers] = useState<Map<string, UserLite>>(new Map())
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const linksQuery = query(
-      collection(db, 'ecosystemLinks'),
-      orderBy('createdAt', 'desc'),
-    )
+    if (authLoading) {
+      setIsLoading(true)
+      return
+    }
 
-    const unsubLinks = onSnapshot(
-      linksQuery,
+    if (!userId) {
+      setRawLinks([])
+      setIsLoading(false)
+      setError(null)
+      return
+    }
+
+    setIsLoading(true)
+    setError(null)
+
+    const sourceLinks = new Map<string, RawDoc>()
+    const targetLinks = new Map<string, RawDoc>()
+    const loaded = { source: false, target: false }
+    const updateLinks = () => {
+      if (!loaded.source || !loaded.target) return
+      const byId = new Map([...sourceLinks, ...targetLinks])
+      setRawLinks(
+        [...byId.values()].sort(
+          (a, b) => toDate(b.createdAt).getTime() - toDate(a.createdAt).getTime(),
+        ),
+      )
+      setIsLoading(false)
+    }
+
+    const makeLinksQuery = (field: 'sourceUserId' | 'targetUserId') =>
+      query(
+        collection(db, 'ecosystemLinks'),
+        where(field, '==', userId),
+      )
+
+    const unsubSourceLinks = onSnapshot(
+      makeLinksQuery('sourceUserId'),
       (snap) => {
-        setRawLinks(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
+        sourceLinks.clear()
+        for (const d of snap.docs) sourceLinks.set(d.id, { id: d.id, ...d.data() })
+        loaded.source = true
         setError(null)
-        setIsLoading(false)
+        updateLinks()
       },
       (err) => {
-        console.error('useEcosystemLinks (links) error:', err)
+        console.error('useEcosystemLinks (source links) error:', err)
+        loaded.source = true
+        setError(err.message)
+        setIsLoading(false)
+      },
+    )
+
+    const unsubTargetLinks = onSnapshot(
+      makeLinksQuery('targetUserId'),
+      (snap) => {
+        targetLinks.clear()
+        for (const d of snap.docs) targetLinks.set(d.id, { id: d.id, ...d.data() })
+        loaded.target = true
+        setError(null)
+        updateLinks()
+      },
+      (err) => {
+        console.error('useEcosystemLinks (target links) error:', err)
+        loaded.target = true
         setError(err.message)
         setIsLoading(false)
       },
@@ -116,10 +169,11 @@ export function useEcosystemLinks() {
     )
 
     return () => {
-      unsubLinks()
+      unsubSourceLinks()
+      unsubTargetLinks()
       unsubUsers()
     }
-  }, [])
+  }, [authLoading, userId])
 
   const links = useMemo<ResolvedEcosystemLink[]>(() => {
     return rawLinks.map((raw) => {
