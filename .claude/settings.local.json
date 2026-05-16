@@ -3,7 +3,10 @@
     "allow": [
       "Bash(npm install *)",
       "PowerShell(npm *)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(npx tsc *)",
+      "Bash(echo \"exit: $?\")",
+      "mcp__ide__getDiagnostics"
     ]
   }
 }
