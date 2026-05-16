@@ -1,5 +1,5 @@
 /**
- * Shared frontend data model for EcoGraph AI.
+ * Shared frontend data model for PoyoLink.
  *
  * Mirrors `functions/src/types.ts`. The Event interface is named `EcoEvent`
  * here to avoid colliding with the DOM `Event` global.

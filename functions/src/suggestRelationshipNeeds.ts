@@ -42,7 +42,7 @@ export const suggestRelationshipNeeds = onCall(
     }
 
     const prompt = [
-      'You are EcoGraph AI. Suggest the relationship needs for an ecosystem context.',
+      'You are PoyoLink. Suggest the relationship needs for an ecosystem context.',
       `Field: ${field}`,
       `Description: ${typeof description === 'string' && description ? description : '(none provided)'}`,
       '',

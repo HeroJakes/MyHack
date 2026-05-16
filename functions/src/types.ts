@@ -1,5 +1,5 @@
 /**
- * Shared backend data model for EcoGraph AI.
+ * Shared backend data model for PoyoLink.
  *
  * Firestore timestamp fields are written as `Timestamp` or `FieldValue`
  * (e.g. server timestamps) and always read back as `Timestamp`.

@@ -61,7 +61,7 @@ export default function CreateEvent() {
     <div className="mx-auto max-w-2xl">
       <h1 className="text-2xl font-bold text-gray-900">Create Event</h1>
       <p className="text-sm text-gray-500">
-        An event is the first kind of EcoGraph context.
+        An event is the first kind of PoyoLink context.
       </p>
 
       <form onSubmit={handleSubmit} className="mt-5 space-y-5">
