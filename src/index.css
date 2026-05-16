@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+@theme {
+  --font-weight-black: 650;
+}
+
 html,
 body,
 #root {
