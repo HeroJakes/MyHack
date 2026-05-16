@@ -1,17 +1,32 @@
 /**
  * onCall: the AI match engine.
  *
- * 1. Reads the event + all users (independent reads run in parallel).
- * 2. Rule pre-filter — keeps only candidates whose sector/expertise overlaps
- *    the event field, so Gemini ranks a focused shortlist.
- * 3. Gemini ranks the shortlist into ParticipantSuggestion[].
+ * 1. Reads the context, all users, this context's invites and previous
+ *    ecosystem links in the same field (independent reads run in parallel).
+ * 2. Pre-filters + scores candidates — drops the organizer and already-invited
+ *    users, then ranks by profile fit AND past link outcomeScores, keeping the
+ *    top 30 so Gemini ranks a focused, history-aware shortlist.
+ * 3. Gemini ranks the shortlist into ParticipantSuggestion[]; invented userIds
+ *    are dropped by a code-level hallucination guard.
  * 4. Persists the suggestions under `suggestions/{contextId}/participants`.
  */
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { buildParticipantPrompt } from './buildParticipantPrompt';
+<<<<<<< Updated upstream
 import { callGemini, getGeminiModelName } from './callGemini';
 import type { Event, ParticipantSuggestion, RelationshipNeed, User } from './types';
+=======
+import { callGemini } from './callGemini';
+import type {
+  EcosystemLink,
+  Event,
+  Invite,
+  ParticipantSuggestion,
+  RelationshipNeed,
+  User,
+} from './types';
+>>>>>>> Stashed changes
 
 const REGION = 'asia-southeast1';
 const AI_TIMEOUT_MS = 90_000;
@@ -94,6 +109,7 @@ function scoreCandidate(user: User, tokens: string[]): number {
   return matches * 20 + Number(user.profileCompleteness ?? 0);
 }
 
+<<<<<<< Updated upstream
 function fallbackConfidence(user: User, tokens: string[]): number {
   const haystack = [
     user.headline,
@@ -141,6 +157,46 @@ function normalizeConfidence(value: unknown): number {
     );
   }
   return Math.max(0, Math.min(100, Math.round(confidence)));
+=======
+/**
+ * History-aware candidate score: profile completeness + sector/expertise
+ * overlap + a boost from the average outcomeScore of the candidate's past
+ * ecosystem links. This is what makes the relationship graph an INPUT to
+ * matching, not just an output.
+ */
+function historyAwareScore(
+  user: User,
+  field: string,
+  needs: RelationshipNeed[],
+  previousLinks: EcosystemLink[],
+): number {
+  let score = user.profileCompleteness ?? 0;
+
+  const fieldLower = field.toLowerCase();
+  const sectorHit = user.inferredSector?.some((s) =>
+    fieldLower.includes(s.toLowerCase()),
+  );
+  if (sectorHit) score += 20;
+
+  const expertiseHit = user.inferredExpertise?.some((e) =>
+    needs.some((n) => n.requirements.toLowerCase().includes(e.toLowerCase())),
+  );
+  if (expertiseHit) score += 15;
+
+  const pastLinks = previousLinks.filter(
+    (l) =>
+      (l.sourceUserId === user.id || l.targetUserId === user.id) &&
+      l.outcomeScore != null,
+  );
+  if (pastLinks.length > 0) {
+    const avg =
+      pastLinks.reduce((sum, l) => sum + (l.outcomeScore ?? 0), 0) /
+      pastLinks.length;
+    score += avg * 0.3;
+  }
+
+  return score;
+>>>>>>> Stashed changes
 }
 
 function matchingSignals(user: User, tokens: string[]): string[] {
@@ -281,16 +337,10 @@ export const generateParticipants = onCall(
 
     const db = getFirestore();
 
-    // Independent reads run in parallel.
-    const [eventSnap, usersSnap] = await Promise.all([
-      db.collection('events').doc(contextId).get(),
-      db.collection('users').get(),
-    ]);
-
-    // A context can live in `events` (createEvent) or `ecosystemContexts`
-    // (createContext). Fall back to ecosystemContexts when `events` has no
-    // matching document, and use whichever collection holds the context.
-    let contextSnap = eventSnap;
+    // Resolve the context first — it can live in `events` (createEvent) or
+    // `ecosystemContexts` (createContext). The ecosystemLinks query below
+    // needs the resolved context's `field`.
+    let contextSnap = await db.collection('events').doc(contextId).get();
     if (!contextSnap.exists) {
       contextSnap = await db
         .collection('ecosystemContexts')
@@ -308,6 +358,23 @@ export const generateParticipants = onCall(
       );
     }
 
+    // Independent reads run in parallel: all users, this context's invites,
+    // and previous ecosystem links in the same field (the AI feedback loop).
+    const [usersSnap, invitesSnap, linksSnap] = await Promise.all([
+      db.collection('users').get(),
+      db.collection('invites').where('contextId', '==', contextId).get(),
+      db
+        .collection('ecosystemLinks')
+        .where('field', '==', event.field ?? '')
+        .where('status', 'in', ['active', 'completed'])
+        .orderBy('createdAt', 'desc')
+        .limit(30)
+        .get(),
+    ]);
+    const previousLinks: EcosystemLink[] = linksSnap.docs.map(
+      (d) => d.data() as EcosystemLink,
+    );
+
     const allUsers = usersSnap.docs.map(
       (d) => ({ id: d.id, ...d.data() }) as User,
     );
@@ -319,8 +386,11 @@ export const generateParticipants = onCall(
         []);
     const needs = rawNeeds;
 
-    // Rule pre-filter: candidates whose sector/expertise overlaps the field.
+    // Pre-filter + history-aware scoring: drop the organizer and anyone
+    // already invited, require a usable profile, then rank by the link graph
+    // and keep the top 30 candidates.
     const tokens = tokenize(event.field ?? '');
+<<<<<<< Updated upstream
     const others = allUsers.filter((u) => u.id !== event.createdBy);
     const preFiltered = others.filter((u) => {
       if (tokens.length === 0) return true;
@@ -341,6 +411,23 @@ export const generateParticipants = onCall(
       .sort((a, b) => scoreCandidate(b, tokens) - scoreCandidate(a, tokens))
       .slice(0, Math.max(Math.min(MAX_AI_CANDIDATES, candidates.length), minimumSlots));
     const promptCandidates = aiCandidates.map((u) => ({
+=======
+    const invitedUserIds = new Set(
+      invitesSnap.docs.map((d) => (d.data() as Invite).invitedUserId),
+    );
+    const candidates = allUsers
+      .filter((u) => u.id !== event.createdBy)
+      .filter((u) => !invitedUserIds.has(u.id))
+      .filter((u) => (u.profileCompleteness ?? 0) >= 20)
+      .map((u) => ({
+        user: u,
+        score: historyAwareScore(u, event.field ?? '', needs, previousLinks),
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 30)
+      .map(({ user }) => user);
+    const promptCandidates = candidates.map((u) => ({
+>>>>>>> Stashed changes
       id: u.id,
       summary: [
         u.headline,
@@ -358,7 +445,12 @@ export const generateParticipants = onCall(
     );
 
     const generatedAt = Timestamp.now();
-    const prompt = buildParticipantPrompt(event, needs, promptCandidates);
+    const prompt = buildParticipantPrompt(
+      event,
+      needs,
+      promptCandidates,
+      previousLinks,
+    );
     let suggestions: ParticipantSuggestion[];
     try {
       const parsed = await withTimeout(
@@ -367,7 +459,25 @@ export const generateParticipants = onCall(
       );
       const participants = normalizeParticipantsPayload(parsed);
 
+<<<<<<< Updated upstream
       suggestions = participants.map((p: any, idx: number) => {
+=======
+      // Code-level hallucination guard — drop any userId Gemini invented.
+      const validUserIds = new Set(candidates.map((u) => u.id));
+      const validatedParticipants = parsed.participants.filter(
+        (p: { userId: string }) => {
+          if (!validUserIds.has(p.userId)) {
+            console.warn(
+              `[generateParticipants] Gemini returned unknown userId: ${p.userId} — dropped`,
+            );
+            return false;
+          }
+          return true;
+        },
+      );
+
+      suggestions = validatedParticipants.map((p: any, idx: number) => {
+>>>>>>> Stashed changes
         const userId = String(p.userId ?? '');
         const matched = userMap.get(userId);
         return {

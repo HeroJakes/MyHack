@@ -279,8 +279,9 @@ export function useCreateContext() {
 
       setFormData((prev) => ({ ...prev, status }))
       setLoading(true)
+      let payload: CreateContextInput | null = null
       try {
-        const payload: CreateContextInput = {
+        payload = {
           name: formData.name.trim(),
           contextType: formData.contextType,
           field: formData.field.trim(),
@@ -355,7 +356,7 @@ export function useCreateContext() {
 
         return contextId
       } catch (err) {
-        if (shouldFallbackToCreateEvent(err, payload)) {
+        if (payload && shouldFallbackToCreateEvent(err, payload)) {
           try {
             return await createEventFallback(payload)
           } catch (fallbackErr) {

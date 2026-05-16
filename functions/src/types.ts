@@ -155,6 +155,7 @@ export interface Invite {
   relationshipType: RelationshipType;
   aiReason: string;
   confidence: number;
+  riskFlags: string[];
   status: InviteStatus;
   sentAt: TimestampValue;
   respondedAt?: TimestampValue;
@@ -184,4 +185,19 @@ export interface EcosystemLink {
   createdFromInviteId: string;
   createdAt: TimestampValue;
   updatedAt: TimestampValue;
+}
+
+/**
+ * Actor feedback on a confirmed ecosystem link. Submitting feedback writes the
+ * `outcomeScore` back onto the link — the signal `generateParticipants` later
+ * reads to improve future matching.
+ */
+export interface LinkFeedback {
+  id: string;
+  linkId: string;
+  givenBy: string;
+  rating: number;
+  outcome: 'valuable' | 'neutral' | 'not_relevant';
+  comment: string;
+  createdAt: TimestampValue;
 }

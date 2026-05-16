@@ -25,6 +25,7 @@ interface Props {
   onMarkCompleted?: (id: string) => void
   onArchive?: (id: string) => void
   onViewDetails?: (id: string) => void
+  onRate?: (link: ResolvedEcosystemLink) => void
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -277,6 +278,14 @@ function ArchiveIcon() {
   )
 }
 
+function StarIcon() {
+  return (
+    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.79L11.48 17l-5.2 2.51.99-5.79-4.21-4.1 5.82-.85z" />
+    </svg>
+  )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function EcosystemLinkCard({
@@ -286,6 +295,7 @@ export default function EcosystemLinkCard({
   onMarkCompleted,
   onArchive,
   onViewDetails,
+  onRate,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -299,6 +309,15 @@ export default function EcosystemLinkCard({
       icon: <ViewIcon />,
       onClick: () => onViewDetails?.(link.id),
     },
+    ...(onRate && link.outcomeScore == null
+      ? [
+          {
+            label: 'Rate Relationship',
+            icon: <StarIcon />,
+            onClick: () => onRate(link),
+          },
+        ]
+      : []),
     ...(link.status !== 'completed'
       ? [
           {
@@ -368,6 +387,34 @@ export default function EcosystemLinkCard({
           <span className="inline-flex items-center rounded-md bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700">
             {formatRelationshipType(link.relationshipType)}
           </span>
+
+          {/* reusableTags + cross-context reuse callout */}
+          {link.reusableTags && link.reusableTags.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {link.reusableTags.map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700"
+                >
+                  {tag}
+                </span>
+              ))}
+              <span className="w-full text-[10px] font-medium text-emerald-600">
+                Tagged for reuse across future {link.field} contexts
+              </span>
+            </div>
+          )}
+
+          {/* riskFlags */}
+          {link.riskFlags && link.riskFlags.length > 0 && (
+            <div className="mt-1">
+              {link.riskFlags.map((flag, i) => (
+                <p key={i} className="text-[10px] text-amber-600">
+                  Risk: {flag}
+                </p>
+              ))}
+            </div>
+          )}
         </td>
 
         {/* ── Context ── */}

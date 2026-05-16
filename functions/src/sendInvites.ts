@@ -87,6 +87,9 @@ export const sendInvites = onCall({ region: REGION }, async (request) => {
       relationshipType: relationshipType as Invite['relationshipType'],
       aiReason: String(raw.aiReason ?? raw.reason ?? ''),
       confidence: Math.max(0, Math.min(100, Number(raw.confidence ?? 0))),
+      riskFlags: Array.isArray(raw.riskFlags)
+        ? (raw.riskFlags as unknown[]).map((r) => String(r))
+        : [],
       status: 'pending',
       sentAt,
     };

@@ -39,7 +39,7 @@ export function createEcosystemLinkFromInvite(
     assignedRole: invite.assignedRole,
     aiReason: invite.aiReason,
     confidence: invite.confidence,
-    riskFlags: [],
+    riskFlags: invite.riskFlags ?? [],
     // Created in the "suggested" state; respondToInvite promotes it to "active".
     status: 'suggested',
     reusableTags: [invite.relationshipType, invite.assignedRole],

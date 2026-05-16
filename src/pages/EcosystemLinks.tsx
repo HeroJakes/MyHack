@@ -19,7 +19,8 @@ import {
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { doc, serverTimestamp, updateDoc } from 'firebase/firestore'
-import { db } from '../lib/firebase'
+import { httpsCallable } from 'firebase/functions'
+import { db, functions } from '../lib/firebase'
 import { useEcosystemLinks } from '../hooks/useEcosystemLinks'
 import type { ResolvedEcosystemLink } from '../hooks/useEcosystemLinks'
 import RelationshipGraphPanel from '../components/RelationshipGraphPanel'
@@ -168,6 +169,11 @@ const ArchiveIco = () => (
     <path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
   </svg>
 )
+const StarIco = () => (
+  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.79L11.48 17l-5.2 2.51.99-5.79-4.21-4.1 5.82-.85z" />
+  </svg>
+)
 const ChevLeft = () => (
   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
     <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -258,7 +264,7 @@ function Row({ children, className = '', onClick }: { children: React.ReactNode;
 // ─── Data row ─────────────────────────────────────────────────────────────────
 
 function LinkRow({
-  link, isSelected, onClick, onMarkCompleted, onArchive, onViewDetails,
+  link, isSelected, onClick, onMarkCompleted, onArchive, onViewDetails, onRate,
 }: {
   link: ResolvedEcosystemLink
   isSelected: boolean
@@ -266,6 +272,7 @@ function LinkRow({
   onMarkCompleted?: (id: string) => void
   onArchive?: (id: string) => void
   onViewDetails?: (id: string) => void
+  onRate?: (link: ResolvedEcosystemLink) => void
 }) {
   const [open, setOpen] = useState(false)
   const btnRef = useRef<HTMLButtonElement>(null)
@@ -274,6 +281,9 @@ function LinkRow({
 
   const items: MenuItem[] = [
     { label: 'View Details',       icon: <EyeIco />,    onClick: () => onViewDetails?.(link.id)    },
+    ...(onRate && link.outcomeScore == null
+      ? [{ label: 'Rate Relationship', icon: <StarIco />, onClick: () => onRate(link) }]
+      : []),
     ...(link.status !== 'completed' ? [{ label: 'Mark as Completed', icon: <CheckIco />,   onClick: () => onMarkCompleted?.(link.id) }] : []),
     ...(link.status !== 'archived'  ? [{ label: 'Archive',           icon: <ArchiveIco />, onClick: () => onArchive?.(link.id), danger: true }] : []),
   ]
@@ -494,6 +504,15 @@ export default function EcosystemLinks() {
   const [relFilter, setRelFilter]           = useState('all')
   const [currentPage, setCurrentPage]       = useState(1)
 
+  // Rate-this-relationship modal state (idle / loading / error / success).
+  const [ratingLink, setRatingLink]       = useState<ResolvedEcosystemLink | null>(null)
+  const [outcomeScore, setOutcomeScore]   = useState(75)
+  const [outcome, setOutcome]             = useState<'valuable' | 'neutral' | 'not_relevant'>('valuable')
+  const [comment, setComment]             = useState('')
+  const [submitting, setSubmitting]       = useState(false)
+  const [submitError, setSubmitError]     = useState<string | null>(null)
+  const [submitSuccess, setSubmitSuccess] = useState(false)
+
   const stats = useMemo(() => {
     const active    = links.filter((l) => l.status === 'active').length
     const completed = links.filter((l) => l.status === 'completed').length
@@ -527,6 +546,40 @@ export default function EcosystemLinks() {
   async function handleArchive(id: string) {
     try { await updateDoc(doc(db, 'ecosystemLinks', id), { status: 'archived', updatedAt: serverTimestamp() }) }
     catch (e) { console.error(e) }
+  }
+
+  function closeRatingModal() {
+    setRatingLink(null)
+    setSubmitError(null)
+    setSubmitSuccess(false)
+    setSubmitting(false)
+    setOutcomeScore(75)
+    setOutcome('valuable')
+    setComment('')
+  }
+
+  async function handleSubmitFeedback() {
+    if (!ratingLink) return
+    setSubmitting(true)
+    setSubmitError(null)
+    try {
+      const submitLinkFeedback = httpsCallable(functions, 'submitLinkFeedback')
+      await submitLinkFeedback({
+        linkId: ratingLink.id,
+        outcomeScore,
+        outcome,
+        comment,
+        feedbackSummary: comment,
+      })
+      // useEcosystemLinks is a live onSnapshot listener — the row self-updates.
+      setSubmitSuccess(true)
+    } catch (err) {
+      setSubmitError(
+        err instanceof Error ? err.message : 'Failed to submit feedback',
+      )
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -643,6 +696,7 @@ export default function EcosystemLinks() {
                   onMarkCompleted={handleMarkCompleted}
                   onArchive={handleArchive}
                   onViewDetails={(id) => setSelectedLinkId(id)}
+                  onRate={setRatingLink}
                 />
               ))
             )}
@@ -670,6 +724,127 @@ export default function EcosystemLinks() {
           onViewContext={(contextId) => navigate(`/events/${contextId}`)}
         />
       </div>
+
+      {/* ── Rate-this-relationship modal ──────────────────────────────────── */}
+      {ratingLink && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+          onClick={closeRatingModal}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {submitSuccess ? (
+              <div className="text-center">
+                <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-emerald-100 text-emerald-600">
+                  <CheckCircle className="h-6 w-6" />
+                </div>
+                <h2 className="mt-3 text-lg font-bold text-gray-900">
+                  Feedback recorded
+                </h2>
+                <p className="mt-1 text-sm text-gray-500">
+                  Outcome score {outcomeScore}/100 is now part of the
+                  relationship graph and will improve future AI matching in{' '}
+                  {ratingLink.field}.
+                </p>
+                <button
+                  type="button"
+                  onClick={closeRatingModal}
+                  className="mt-4 w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+                >
+                  Done
+                </button>
+              </div>
+            ) : (
+              <>
+                <h2 className="text-lg font-bold text-gray-900">
+                  Rate this relationship
+                </h2>
+                <p className="mt-1 text-sm text-gray-500">
+                  {ratingLink.sourceUserName} → {ratingLink.targetUserName} ·{' '}
+                  {ratingLink.contextName}
+                </p>
+
+                <div className="mt-4">
+                  <label className="flex items-center justify-between text-sm font-semibold text-gray-700">
+                    <span>Outcome score</span>
+                    <span className="text-blue-600">{outcomeScore}/100</span>
+                  </label>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={outcomeScore}
+                    onChange={(e) => setOutcomeScore(Number(e.target.value))}
+                    disabled={submitting}
+                    className="mt-2 w-full accent-blue-600"
+                  />
+                </div>
+
+                <div className="mt-4">
+                  <label className="text-sm font-semibold text-gray-700">
+                    Outcome
+                  </label>
+                  <select
+                    value={outcome}
+                    onChange={(e) =>
+                      setOutcome(
+                        e.target.value as 'valuable' | 'neutral' | 'not_relevant',
+                      )
+                    }
+                    disabled={submitting}
+                    className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                  >
+                    <option value="valuable">Valuable</option>
+                    <option value="neutral">Neutral</option>
+                    <option value="not_relevant">Not relevant</option>
+                  </select>
+                </div>
+
+                <div className="mt-4">
+                  <label className="text-sm font-semibold text-gray-700">
+                    Comment
+                  </label>
+                  <textarea
+                    value={comment}
+                    onChange={(e) => setComment(e.target.value)}
+                    placeholder="What worked? What didn't?"
+                    rows={3}
+                    disabled={submitting}
+                    className="mt-1 w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 placeholder:text-gray-400 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                  />
+                </div>
+
+                {submitError && (
+                  <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+                    {submitError}
+                  </p>
+                )}
+
+                <div className="mt-5 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={closeRatingModal}
+                    disabled={submitting}
+                    className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSubmitFeedback}
+                    disabled={submitting}
+                    className="flex-1 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                  >
+                    {submitting ? 'Submitting...' : 'Submit Feedback'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -15,3 +15,4 @@ export { suggestRelationshipNeeds } from './suggestRelationshipNeeds';
 export { generateParticipants } from './generateParticipants';
 export { sendInvites } from './sendInvites';
 export { respondToInvite } from './respondToInvite';
+export { submitLinkFeedback } from './submitLinkFeedback';

@@ -2,7 +2,7 @@
  * Pure function: builds the Gemini prompt string for the participant
  * matching engine. No I/O, no side effects — easy to unit test.
  */
-import type { Event, RelationshipNeed } from './types';
+import type { EcosystemLink, Event, RelationshipNeed } from './types';
 
 type PromptEvent = Pick<Event, 'name' | 'type' | 'field' | 'description'>;
 
@@ -19,6 +19,7 @@ export function buildParticipantPrompt(
   event: PromptEvent,
   needs: RelationshipNeed[],
   candidates: PromptCandidate[],
+  previousLinks: EcosystemLink[],
 ): string {
   // RELATIONSHIP NEEDS — one block per need: Requirements then optional Keywords.
   const needLines = needs.length
@@ -51,6 +52,24 @@ export function buildParticipantPrompt(
     .map((c) => `- id: ${c.id} | ${c.summary}`)
     .join('\n');
 
+  // PREVIOUS ECOSYSTEM LINKS — past confirmed matches with their outcome
+  // scores, so Gemini can favour actors with a strong track record.
+  const previousLinksBlock =
+    previousLinks.length > 0
+      ? previousLinks
+          .slice(0, 20)
+          .map(
+            (l) =>
+              `- Relationship: ${l.relationshipType} | Field: ${l.field} | ` +
+              `Status: ${l.status} | Outcome score: ${
+                l.outcomeScore ?? 'not yet rated'
+              }\n` +
+              `  Source actor: ${l.sourceUserId} | Target actor: ${l.targetUserId}\n` +
+              `  Reusable tags: ${l.reusableTags?.join(', ') || 'none'}`,
+          )
+          .join('\n')
+      : 'No previous ecosystem links available yet.';
+
   return [
     'You are PoyoLink, an ecosystem relationship matching engine.',
     'You match people to the relationship needs of a context based on evidence.',
@@ -77,6 +96,9 @@ export function buildParticipantPrompt(
     'CANDIDATE PEOPLE:',
     candidateLines || '(no candidates supplied)',
     '',
+    'PREVIOUS ECOSYSTEM LINKS (use to improve match quality):',
+    previousLinksBlock,
+    '',
     'RULES:',
     '1. You MUST fill every slot quota. If no strong match exists, return the closest available candidate with a reduced confidence score and appropriate riskFlags. Never leave a required slot empty.',
     '2. Rank the strongest candidates for the relationship needs above.',
@@ -92,6 +114,12 @@ export function buildParticipantPrompt(
     '10. If keywords are provided for a role, treat them as high-priority ' +
       'signals. Candidates who match more keywords should rank higher for ' +
       'that role. Mention matched keywords in the reason field where relevant.',
+    '11. If a candidate appears as source or target in a previous ecosystem ' +
+      'link with outcomeScore >= 70 in the same field, increase their ' +
+      'confidence and reference the past outcome in the reason.',
+    '12. If a candidate appears in a previous ecosystem link with ' +
+      'outcomeScore < 40, add a riskFlag noting the underperforming prior ' +
+      'relationship.',
     '',
     'CONFIDENCE RUBRIC:',
     '- 90-100: Exceptional match. Strong direct evidence for sector, role, skills, and context needs.',
