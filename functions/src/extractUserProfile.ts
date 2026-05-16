@@ -8,7 +8,7 @@
  * onto `users/{uid}` after the user reviews it on onboarding step 3.
  */
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
-import type { Part } from '@google/generative-ai';
+import type { Part } from '@google/genai';
 import { callGemini } from './callGemini';
 import type { InferredStage } from './types';
 
@@ -162,7 +162,7 @@ function normalizeProfile(parsed: any): ExtractedProfile {
 }
 
 export const extractUserProfile = onCall(
-  { region: REGION, secrets: ['GEMINI_API_KEY'] },
+  { region: REGION },
   async (request): Promise<ExtractedProfile> => {
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'You must be signed in.');

@@ -444,7 +444,7 @@ export default function MyInvites() {
         </div>
       </section>
 
-      <section className="grid gap-2.5 xl:grid-cols-[minmax(460px,1fr)_auto_auto_auto] xl:items-center">
+      <section className="grid gap-2.5 xl:grid-cols-[minmax(360px,1fr)_auto_auto_auto] xl:items-center">
         <label className="relative min-w-0 flex-1">
           <span className="sr-only">Search invites</span>
           <input
@@ -459,21 +459,27 @@ export default function MyInvites() {
           </svg>
         </label>
 
-        <label>
-          <span className="sr-only">Filter by invite status</span>
-          <select
-            value={statusFilter}
-            onChange={(event) =>
-              setStatusFilter(event.target.value as StatusFilter)
-            }
-            className="h-10 min-w-40 rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-black text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
-          >
-            <option value="all">All invites</option>
-            <option value="pending">Pending</option>
-            <option value="confirmed">Accepted</option>
-            <option value="declined">Declined</option>
-          </select>
-        </label>
+        <div className="flex flex-wrap gap-2 xl:flex-nowrap">
+          {[
+            { label: 'All Invites', value: 'all' as const },
+            { label: 'Pending', value: 'pending' as const },
+            { label: 'Accepted', value: 'confirmed' as const },
+            { label: 'Declined', value: 'declined' as const },
+          ].map((item) => (
+            <button
+              key={item.value}
+              type="button"
+              onClick={() => setStatusFilter(item.value)}
+              className={`h-10 rounded-xl border px-3.5 text-xs font-black transition ${
+                statusFilter === item.value
+                  ? 'border-blue-500 bg-blue-50 text-blue-600 shadow-sm shadow-blue-100'
+                  : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
 
         <label>
           <span className="sr-only">Filter by role</span>

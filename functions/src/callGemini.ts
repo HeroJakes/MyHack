@@ -1,76 +1,101 @@
 /**
- * Thin, reusable wrapper around Gemini Flash.
+ * Thin, reusable wrapper around Gemini on Vertex AI.
  *
- * The GEMINI_API_KEY secret is injected into process.env only at function
- * invocation time, so the SDK is initialized lazily inside getModel() — never
- * at module load. callGemini accepts either a plain text prompt or an ordered
+ * This uses the Cloud Function runtime service account / ADC, so requests are
+ * billed through the Google Cloud project instead of the Gemini Developer API
+ * free-tier key. callGemini accepts either a plain text prompt or an ordered
  * list of multimodal parts (text + inline files).
  *
  * The model is configured with responseMimeType 'application/json', so Gemini
- * always returns raw JSON. callGemini strips any stray markdown fences, parses
- * the JSON and retries once (resending the original prompt) on a parse
- * failure. It does NOT validate the response shape — that is the caller's job.
+ * should return raw JSON. callGemini strips any stray markdown fences, parses
+ * the JSON and retries once on parse failure. It does NOT validate the response
+ * shape; each caller owns that check.
  */
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import type { Part } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
+import type { ContentListUnion, Part } from '@google/genai';
 import { HttpsError } from 'firebase-functions/v2/https';
 
-/**
- * gemini-1.5-flash is retired for new projects and returns INVALID_ARGUMENT,
- * so the default is a current Flash model and 1.5 is rejected if configured.
- */
-const DEFAULT_MODEL = 'gemini-2.5-flash';
-const DEPRECATED_MODELS = new Set(['gemini-1.5-flash']);
+const DEFAULT_MODEL = 'gemini-3.1-pro-preview';
+const DEFAULT_LOCATION = 'global';
+const DEFAULT_PROJECT = 'myhack-c753f';
 
 /** A prompt is either plain text or an ordered list of multimodal parts. */
 export type GeminiPrompt = string | Array<string | Part>;
 
-/**
- * Builds the Gemini model at invocation time, when the secret is guaranteed
- * to be present on process.env. Never call this at module load.
- */
-function getModel() {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new HttpsError('internal', 'GEMINI_API_KEY secret is not set');
-  }
-  const configuredModel = process.env.GEMINI_MODEL?.trim();
-  const model =
-    configuredModel && !DEPRECATED_MODELS.has(configuredModel)
-      ? configuredModel
-      : DEFAULT_MODEL;
+let client: GoogleGenAI | null = null;
 
-  if (configuredModel && configuredModel !== model) {
-    console.warn(
-      `GEMINI_MODEL=${configuredModel} is deprecated; using ${model} instead.`,
-    );
-  }
+function getProjectId(): string {
+  return (
+    process.env.GOOGLE_CLOUD_PROJECT?.trim() ||
+    process.env.GCLOUD_PROJECT?.trim() ||
+    process.env.GCP_PROJECT?.trim() ||
+    DEFAULT_PROJECT
+  );
+}
 
-  const genAI = new GoogleGenerativeAI(apiKey);
-  // generationConfig is intentionally minimal — temperature + responseMimeType
-  // only. Other fields (maxOutputTokens, topP, topK, candidateCount) can
-  // trigger INVALID_ARGUMENT on some model versions, so they are omitted.
-  return genAI.getGenerativeModel({
-    model,
-    generationConfig: { temperature: 0, responseMimeType: 'application/json' },
-  });
+/** Builds the Vertex AI Gemini client at invocation time. */
+function getClient() {
+  if (!client) {
+    client = new GoogleGenAI({
+      vertexai: true,
+      project: getProjectId(),
+      location: process.env.GOOGLE_CLOUD_LOCATION?.trim() || DEFAULT_LOCATION,
+    });
+  }
+  return client;
+}
+
+function normalizePrompt(prompt: GeminiPrompt): ContentListUnion {
+  return typeof prompt === 'string' ? prompt : prompt;
+}
+
+function getModelName() {
+  return process.env.GEMINI_MODEL?.trim() || DEFAULT_MODEL;
 }
 
 /**
  * Calls Gemini and returns the parsed JSON response.
  *
  * On a JSON parse failure it retries exactly once by resending the original
- * prompt — with responseMimeType set, Gemini already returns raw JSON, so no
- * extra "return raw JSON" hint is appended. If the response is still malformed
- * it throws HttpsError('internal'). The parsed object is returned as-is —
- * shape validation is the caller's job.
+ * prompt. If the response is still malformed it throws HttpsError('internal').
+ * The parsed object is returned as-is; shape validation is the caller's job.
  */
 export async function callGemini(
   prompt: GeminiPrompt,
   attempt = 0,
 ): Promise<any> {
-  const result = await getModel().generateContent(prompt);
-  const raw = result.response.text();
+  let result;
+  try {
+    result = await getClient().models.generateContent({
+      model: getModelName(),
+      contents: normalizePrompt(prompt),
+      config: {
+        temperature: 0,
+        responseMimeType: 'application/json',
+      },
+    });
+  } catch (err: any) {
+    const status = Number(err?.status ?? err?.code);
+    if (status === 429 || status === 8) {
+      throw new HttpsError(
+        'resource-exhausted',
+        'Vertex AI Gemini quota is exhausted. Please try again later.',
+      );
+    }
+    if (status === 403 || status === 7) {
+      throw new HttpsError(
+        'permission-denied',
+        'Vertex AI Gemini is not enabled or the function service account lacks access.',
+      );
+    }
+    console.error('callGemini: Gemini request failed', err);
+    throw new HttpsError(
+      'unavailable',
+      'Gemini is currently unavailable. Please try again later.',
+    );
+  }
+
+  const raw = result.text ?? '';
   const clean = raw
     .replace(/```json\n?/g, '')
     .replace(/```/g, '')
@@ -81,8 +106,6 @@ export async function callGemini(
   } catch (err) {
     console.error(`callGemini: JSON parse failed on attempt ${attempt}`, err);
     if (attempt === 0) {
-      // Resend the original prompt unchanged — responseMimeType guarantees
-      // raw JSON, so a "no markdown" hint is unnecessary.
       return callGemini(prompt, 1);
     }
     throw new HttpsError(

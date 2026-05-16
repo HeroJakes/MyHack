@@ -25,7 +25,7 @@ function tokenize(field: string): string[] {
 }
 
 export const generateParticipants = onCall(
-  { region: REGION, secrets: ['GEMINI_API_KEY'] },
+  { region: REGION },
   async (request) => {
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'You must be signed in.');
@@ -87,8 +87,21 @@ export const generateParticipants = onCall(
     });
     // Fall back to the full pool if the pre-filter is too aggressive.
     const candidates = preFiltered.length > 0 ? preFiltered : others;
+    const promptCandidates = candidates.map((u) => ({
+      id: u.id,
+      summary: [
+        u.headline,
+        u.bio,
+        `Sectors: ${(u.inferredSector ?? []).join(', ') || 'none'}`,
+        `Expertise: ${(u.inferredExpertise ?? []).join(', ') || 'none'}`,
+        `Signals: ${(u.contributionSignals ?? []).join(', ') || 'none'}`,
+        `Stage: ${u.inferredStage ?? 'unknown'}`,
+      ]
+        .filter(Boolean)
+        .join(' | '),
+    }));
 
-    const prompt = buildParticipantPrompt(event, needs, candidates);
+    const prompt = buildParticipantPrompt(event, needs, promptCandidates);
     const parsed = await callGemini(prompt);
     if (!parsed.participants || !Array.isArray(parsed.participants)) {
       throw new HttpsError(

@@ -66,6 +66,7 @@ export interface RelationshipNeed {
   count: number;
   relationshipType: RelationshipType;
   requirements: string;
+  keywords?: string[];
 }
 
 /**

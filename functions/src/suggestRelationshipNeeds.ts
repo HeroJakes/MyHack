@@ -29,8 +29,38 @@ const VALID_TYPES: RelationshipType[] = [
   'participant_orchestration',
 ];
 
+function fallbackRelationshipNeeds(field: string): RelationshipNeed[] {
+  const cleanedField = field.trim() || 'this field';
+  return [
+    {
+      role: 'Programme Admin',
+      count: 1,
+      relationshipType: 'participant_orchestration',
+      requirements: `Coordinate stakeholders, timelines and follow-through for the ${cleanedField} context.`,
+    },
+    {
+      role: 'Mentor',
+      count: 2,
+      relationshipType: 'mentor_match',
+      requirements: `Guide participants with practical experience and relevant networks in ${cleanedField}.`,
+    },
+    {
+      role: 'Partner',
+      count: 2,
+      relationshipType: 'partner_linkage',
+      requirements: `Bring complementary ecosystem reach, resources or collaboration opportunities in ${cleanedField}.`,
+    },
+    {
+      role: 'Service Provider',
+      count: 1,
+      relationshipType: 'service_support',
+      requirements: `Provide specialist operational, technical or advisory support needed for ${cleanedField}.`,
+    },
+  ];
+}
+
 export const suggestRelationshipNeeds = onCall(
-  { region: REGION, secrets: ['GEMINI_API_KEY'] },
+  { region: REGION },
   async (request) => {
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'You must be signed in.');
@@ -56,7 +86,23 @@ export const suggestRelationshipNeeds = onCall(
       'Suggest 3 to 5 needs that realistically fit the field and description.',
     ].join('\n');
 
-    const parsed = await callGemini(prompt);
+    let parsed;
+    try {
+      parsed = await callGemini(prompt);
+    } catch (err: any) {
+      if (
+        err instanceof HttpsError &&
+        (err.code === 'resource-exhausted' ||
+          err.code === 'permission-denied' ||
+          err.code === 'unavailable')
+      ) {
+        console.warn(
+          `suggestRelationshipNeeds: Gemini unavailable (${err.code}); returning fallback needs.`,
+        );
+        return { needs: fallbackRelationshipNeeds(field) };
+      }
+      throw err;
+    }
     if (!parsed.relationshipNeeds || !Array.isArray(parsed.relationshipNeeds)) {
       throw new HttpsError(
         'internal',
