@@ -68,6 +68,8 @@ export interface User {
   email: string;
   photoURL: string;
   headline: string;
+  /** Optional free-text location; not all profiles carry it. */
+  location?: string;
   linkedinId?: string;
   inferredSector: string[];
   inferredExpertise: string[];

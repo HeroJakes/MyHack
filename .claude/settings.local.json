@@ -12,7 +12,14 @@
       "PowerShell(npx tsc --noEmit -p functions/tsconfig.json)",
       "PowerShell(npx eslint src/pages/CreateContext.tsx src/hooks/useCreateContext.ts src/components/RoleRequirementForm.tsx src/App.tsx)",
       "PowerShell(npx eslint src 2>&1)",
-      "Bash(npm ls *)"
+      "Bash(npm ls *)",
+      "Bash(cat firebase.json)",
+      "Bash(cat firestore.rules)",
+      "Bash(ls src/)",
+      "Bash(ls src/pages/)",
+      "Bash(ls src/hooks/)",
+      "Bash(ls src/components/)",
+      "Bash(ls functions/src/)"
     ]
   }
 }

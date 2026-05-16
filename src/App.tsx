@@ -16,7 +16,7 @@ import RelationshipGraph from './pages/RelationshipGraph'
 import MyContexts from './pages/MyContexts'
 import MyInvites from './pages/MyInvites'
 import EcosystemLinks from './pages/EcosystemLinks'
-import People from './pages/People'
+import EcosystemProfiles from './pages/EcosystemProfiles'
 import UserProfile from './pages/UserProfile'
 import Analytics from './pages/Analytics'
 import OnboardingStep1 from './pages/onboarding/OnboardingStep1'
@@ -160,7 +160,7 @@ export default function App() {
         path="/people"
         element={
           <PrivateRoute>
-            <People />
+            <EcosystemProfiles />
           </PrivateRoute>
         }
       />

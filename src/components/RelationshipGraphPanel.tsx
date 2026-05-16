@@ -6,6 +6,7 @@
  * with a dot travelling along each one). Supports zoom/pan and node drag.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import * as d3 from 'd3'
 import type { ResolvedEcosystemLink } from '../hooks/useEcosystemLinks'
 import { Info, Share2 } from './icons'
@@ -14,6 +15,9 @@ interface RelationshipGraphPanelProps {
   links: ResolvedEcosystemLink[]
   isLoading: boolean
   onNodeClick?: (userId: string, userName: string) => void
+  /** Optional header link, e.g. "View full graph" on the dashboard. */
+  actionLabel?: string
+  actionHref?: string
 }
 
 interface GraphNode extends d3.SimulationNodeDatum {
@@ -103,53 +107,12 @@ function nodeRadius(node: GraphNode): number {
   return Math.max(20, Math.min(40, 16 + node.linkCount * 4))
 }
 
-type Profile = {
-  name: string
-}
-
-function linkedNode(value: string | number | GraphNode): GraphNode | null {
-  return typeof value === 'object' && value !== null ? value : null
-}
-
-function graphLabel(value: string): string {
-  if (!value) return 'User'
-  return value.length > 14 ? `${value.slice(0, 13)}...` : value
-}
-
-function useProfiles(ids: string[]) {
-  const [profiles, setProfiles] = useState<Record<string, Profile>>({})
-  const stableIds = useMemo(() => Array.from(new Set(ids.filter(Boolean))), [ids])
-
-  useEffect(() => {
-    if (stableIds.length === 0) {
-      setProfiles({})
-      return
-    }
-
-    const unsubscribers = stableIds.map((id) =>
-      onSnapshot(doc(db, 'users', id), (snap) => {
-        const data = snap.data()
-        setProfiles((current) => ({
-          ...current,
-          [id]: {
-            name: data?.name || data?.email?.split('@')[0] || 'User',
-          },
-        }))
-      }),
-    )
-
-    return () => {
-      unsubscribers.forEach((unsubscribe) => unsubscribe())
-    }
-  }, [stableIds])
-
-  return profiles
-}
-
 export default function RelationshipGraphPanel({
   links,
   isLoading,
   onNodeClick,
+  actionLabel,
+  actionHref,
 }: RelationshipGraphPanelProps) {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
@@ -326,7 +289,7 @@ export default function RelationshipGraphPanel({
             <Info className="h-4 w-4 text-gray-400" />
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600">
             {meta.nodeCount} actors · {meta.edgeCount} links
           </span>
@@ -338,6 +301,14 @@ export default function RelationshipGraphPanel({
           >
             Legend
           </button>
+          {actionLabel && actionHref && (
+            <Link
+              to={actionHref}
+              className="text-xs font-semibold text-blue-600 transition-colors hover:text-blue-700"
+            >
+              {actionLabel} →
+            </Link>
+          )}
         </div>
       </div>
 

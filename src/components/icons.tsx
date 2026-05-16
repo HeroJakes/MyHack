@@ -249,3 +249,79 @@ export function Briefcase(props: IconProps) {
     </svg>
   )
 }
+
+export function Send(props: IconProps) {
+  return (
+    <svg {...BASE} {...props}>
+      <path d="M22 2 11 13" />
+      <path d="M22 2 15 22l-4-9-9-4z" />
+    </svg>
+  )
+}
+
+export function MapPin(props: IconProps) {
+  return (
+    <svg {...BASE} {...props}>
+      <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+      <circle cx="12" cy="10" r="3" />
+    </svg>
+  )
+}
+
+export function X(props: IconProps) {
+  return (
+    <svg {...BASE} {...props}>
+      <path d="M18 6 6 18" />
+      <path d="m6 6 12 12" />
+    </svg>
+  )
+}
+
+export function LayoutGrid(props: IconProps) {
+  return (
+    <svg {...BASE} {...props}>
+      <rect width="7" height="7" x="3" y="3" rx="1" />
+      <rect width="7" height="7" x="14" y="3" rx="1" />
+      <rect width="7" height="7" x="14" y="14" rx="1" />
+      <rect width="7" height="7" x="3" y="14" rx="1" />
+    </svg>
+  )
+}
+
+export function List(props: IconProps) {
+  return (
+    <svg {...BASE} {...props}>
+      <path d="M8 6h13" />
+      <path d="M8 12h13" />
+      <path d="M8 18h13" />
+      <path d="M3 6h.01" />
+      <path d="M3 12h.01" />
+      <path d="M3 18h.01" />
+    </svg>
+  )
+}
+
+export function Filter(props: IconProps) {
+  return (
+    <svg {...BASE} {...props}>
+      <path d="M22 3H2l8 9.46V19l4 2v-8.54z" />
+    </svg>
+  )
+}
+
+export function MessageCircle(props: IconProps) {
+  return (
+    <svg {...BASE} {...props}>
+      <path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 17 0z" />
+    </svg>
+  )
+}
+
+export function Pencil(props: IconProps) {
+  return (
+    <svg {...BASE} {...props}>
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" />
+    </svg>
+  )
+}

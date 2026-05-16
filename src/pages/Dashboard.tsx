@@ -1,18 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { collection, doc, onSnapshot, query, where } from 'firebase/firestore'
-import * as d3 from 'd3'
 import { db } from '../lib/firebase'
 import { useAuth } from '../contexts/AuthContext'
 import { useEvents } from '../hooks/useEvents'
 import { useEcosystemLinks } from '../hooks/useEcosystemLinks'
+import type { ResolvedEcosystemLink } from '../hooks/useEcosystemLinks'
 import { useRespondToInvite } from '../hooks/useRespondToInvite'
-import type {
-  EcoEvent,
-  EcosystemLink,
-  Invite,
-  RelationshipRole,
-} from '../types'
+import RelationshipGraphPanel from '../components/RelationshipGraphPanel'
+import type { EcoEvent, Invite, RelationshipRole } from '../types'
 
 type Profile = {
   id: string
@@ -21,34 +17,12 @@ type Profile = {
   photoURL: string
 }
 
-type GraphNode = d3.SimulationNodeDatum & {
-  id: string
-  label: string
-  role: RelationshipRole | 'You'
-  isHub?: boolean
-}
-
-type GraphEdge = d3.SimulationLinkDatum<GraphNode>
-
 const ROLE_STYLES: Record<string, string> = {
   Mentor: 'bg-violet-50 text-violet-700 ring-violet-100',
   Partner: 'bg-orange-50 text-orange-700 ring-orange-100',
   'Startup/Company': 'bg-emerald-50 text-emerald-700 ring-emerald-100',
   'Service Provider': 'bg-cyan-50 text-cyan-700 ring-cyan-100',
   'Programme Admin': 'bg-slate-100 text-slate-700 ring-slate-200',
-}
-
-const ROLE_COLORS: Record<string, string> = {
-  Mentor: '#8b5cf6',
-  Partner: '#f59e0b',
-  'Startup/Company': '#22c55e',
-  'Service Provider': '#14b8a6',
-  'Programme Admin': '#64748b',
-  You: '#2563eb',
-}
-
-function linkedNode(value: string | number | GraphNode): GraphNode | null {
-  return typeof value === 'object' && value !== null ? value : null
 }
 
 function toMillis(value: unknown): number {
@@ -428,7 +402,7 @@ function RecentLinks({
   profiles,
   currentUserId,
 }: {
-  links: EcosystemLink[]
+  links: ResolvedEcosystemLink[]
   profiles: Record<string, Profile>
   currentUserId: string
 }) {
@@ -477,149 +451,12 @@ function RecentLinks({
   )
 }
 
-function EcosystemGraphSnapshot({
-  links,
-  profiles,
-  currentUserId,
-}: {
-  links: EcosystemLink[]
-  profiles: Record<string, Profile>
-  currentUserId: string
-}) {
-  const svgRef = useRef<SVGSVGElement | null>(null)
-  const width = 560
-  const height = 260
-
-  const { nodes, edges } = useMemo(() => {
-    const nodeMap = new Map<string, GraphNode>()
-    nodeMap.set(currentUserId, {
-      id: currentUserId,
-      label: 'You',
-      role: 'You',
-      isHub: true,
-      fx: width / 2,
-      fy: height / 2,
-    })
-
-    links.slice(0, 8).forEach((link) => {
-      const otherUserId = link.sourceUserId === currentUserId ? link.targetUserId : link.sourceUserId
-      const profile = profiles[otherUserId]
-      if (!nodeMap.has(otherUserId)) {
-        nodeMap.set(otherUserId, {
-          id: otherUserId,
-          label: profile?.name || roleLabel(link.assignedRole),
-          role: link.assignedRole,
-        })
-      }
-    })
-
-    const graphNodes = Array.from(nodeMap.values())
-    const graphEdges = links.slice(0, 8).map((link) => ({
-      source: currentUserId,
-      target: link.sourceUserId === currentUserId ? link.targetUserId : link.sourceUserId,
-    }))
-
-    return { nodes: graphNodes, edges: graphEdges }
-  }, [currentUserId, links, profiles])
-
-  useEffect(() => {
-    if (!svgRef.current) return
-
-    const svg = d3.select(svgRef.current)
-    svg.selectAll('*').remove()
-
-    if (nodes.length <= 1) {
-      svg
-        .append('text')
-        .attr('x', width / 2)
-        .attr('y', height / 2)
-        .attr('text-anchor', 'middle')
-        .attr('fill', '#64748b')
-        .attr('font-size', 12)
-        .attr('font-weight', 700)
-        .text('No links yet')
-      return
-    }
-
-    const simulation = d3
-      .forceSimulation<GraphNode>(nodes.map((node) => ({ ...node })))
-      .force('link', d3.forceLink<GraphNode, GraphEdge>(edges).id((node) => node.id).distance(100))
-      .force('charge', d3.forceManyBody().strength(-260))
-      .force('center', d3.forceCenter(width / 2, height / 2))
-      .force('collide', d3.forceCollide(25))
-
-    const edgeSelection = svg
-      .append('g')
-      .attr('stroke', '#cbd5e1')
-      .attr('stroke-dasharray', '3 3')
-      .attr('stroke-width', 1.2)
-      .selectAll('line')
-      .data(edges)
-      .join('line')
-
-    const nodeGroup = svg
-      .append('g')
-      .selectAll<SVGGElement, GraphNode>('g')
-      .data(simulation.nodes())
-      .join('g')
-
-    nodeGroup
-      .append('circle')
-      .attr('r', (node) => (node.isHub ? 28 : 18))
-      .attr('fill', (node) => ROLE_COLORS[node.role] || '#64748b')
-      .attr('fill-opacity', (node) => (node.isHub ? 1 : 0.16))
-      .attr('stroke', (node) => ROLE_COLORS[node.role] || '#64748b')
-      .attr('stroke-width', (node) => (node.isHub ? 0 : 1.5))
-
-    nodeGroup
-      .append('text')
-      .text((node) => initials(node.label))
-      .attr('text-anchor', 'middle')
-      .attr('dy', 4)
-      .attr('fill', (node) => (node.isHub ? '#fff' : ROLE_COLORS[node.role] || '#334155'))
-      .attr('font-size', (node) => (node.isHub ? 12 : 10))
-      .attr('font-weight', 900)
-
-    simulation.on('tick', () => {
-      edgeSelection
-        .attr('x1', (edge) => linkedNode(edge.source)?.x ?? 0)
-        .attr('y1', (edge) => linkedNode(edge.source)?.y ?? 0)
-        .attr('x2', (edge) => linkedNode(edge.target)?.x ?? 0)
-        .attr('y2', (edge) => linkedNode(edge.target)?.y ?? 0)
-      nodeGroup.attr('transform', (node) => `translate(${node.x ?? 0},${node.y ?? 0})`)
-    })
-
-    return () => {
-      simulation.stop()
-    }
-  }, [edges, nodes])
-
-  return (
-    <div>
-      <svg
-        ref={svgRef}
-        viewBox={`0 0 ${width} ${height}`}
-        className="h-64 w-full"
-        role="img"
-        aria-label="Ecosystem graph snapshot"
-      />
-      <div className="flex flex-wrap justify-center gap-3 text-[10px] font-bold text-slate-500">
-        {(['Mentor', 'Partner', 'Startup/Company', 'Service Provider', 'Programme Admin'] as RelationshipRole[]).map((role) => (
-          <span key={role} className="flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: ROLE_COLORS[role] }} />
-            {roleLabel(role)}
-          </span>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 export default function Dashboard() {
   const { user } = useAuth()
   const { events, loading: eventsLoading, error: eventsError } = useEvents()
   const { invites, loading: invitesLoading, error: invitesError } = useDashboardInvites()
-  const { links, loading: linksLoading, error: linksError } = useEcosystemLinks()
+  const { links, isLoading: linksLoading, error: linksError } =
+    useEcosystemLinks()
 
   const profileIds = useMemo(
     () => [
@@ -759,9 +596,12 @@ export default function Dashboard() {
             <RecentLinks links={links} profiles={profiles} currentUserId={user?.uid || ''} />
           </Panel>
 
-          <Panel title="Ecosystem Graph (Snapshot)" actionLabel="View full graph" actionHref="/graph">
-            <EcosystemGraphSnapshot links={links} profiles={profiles} currentUserId={user?.uid || ''} />
-          </Panel>
+          <RelationshipGraphPanel
+            links={links}
+            isLoading={linksLoading}
+            actionLabel="View full graph"
+            actionHref="/graph"
+          />
         </div>
       )}
     </div>
