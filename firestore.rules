@@ -58,18 +58,17 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Ecosystem links: visible to the two linked actors and to the organizer
-    // (createdBy) of the context the link belongs to. Mutated by backend only.
+    // Ecosystem links: readable by any signed-in user so the Ecosystem Links
+    // page can render the whole relationship graph. Created by backend only.
+    // The two linked actors may update the link's status / outcome fields.
     match /ecosystemLinks/{linkId} {
-      allow read: if request.auth != null
-        && (
-          request.auth.uid == resource.data.sourceUserId
-          || request.auth.uid == resource.data.targetUserId
-          || request.auth.uid == get(/databases/$(database)/documents/ecosystemContexts/$(resource.data.contextId)).data.createdBy
-          || request.auth.uid == get(/databases/$(database)/documents/events/$(resource.data.contextId)).data.createdBy
-        );
+      allow read: if request.auth != null;
       allow create: if false;
-      allow update: if false;
+      allow update: if request.auth != null
+        && (request.auth.uid == resource.data.sourceUserId
+            || request.auth.uid == resource.data.targetUserId)
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['status', 'outcomeScore', 'feedbackSummary', 'updatedAt']);
     }
   }
 }
