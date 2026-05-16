@@ -18,6 +18,7 @@ import MyInvites from './pages/MyInvites'
 import EcosystemLinks from './pages/EcosystemLinks'
 import EcosystemProfiles from './pages/EcosystemProfiles'
 import UserProfile from './pages/UserProfile'
+import EditUserProfile from './pages/EditUserProfile'
 import Analytics from './pages/Analytics'
 import OnboardingStep1 from './pages/onboarding/OnboardingStep1'
 import OnboardingStep2 from './pages/onboarding/OnboardingStep2'
@@ -169,6 +170,14 @@ export default function App() {
         element={
           <PrivateRoute>
             <UserProfile />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/profile/edit"
+        element={
+          <PrivateRoute>
+            <EditUserProfile />
           </PrivateRoute>
         }
       />

@@ -67,6 +67,9 @@ export interface User {
   name: string;
   email: string;
   photoURL: string;
+  image?: string;
+  profileImageBase64?: string;
+  hasAddedAISignals?: boolean;
   headline: string;
   /** Optional free-text location; not all profiles carry it. */
   location?: string;
