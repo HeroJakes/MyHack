@@ -9,7 +9,7 @@ import type { Event, LocationType, RelationshipNeed } from './types';
 
 const REGION = 'asia-southeast1';
 
-export const createEvent = onCall({ region: REGION }, async (request) => {
+export const createEvent = onCall({ region: REGION, cors: true, invoker: 'public' }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'You must be signed in.');
   }

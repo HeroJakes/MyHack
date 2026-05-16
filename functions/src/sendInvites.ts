@@ -26,7 +26,7 @@ function inviteDocId(
     .join('__');
 }
 
-export const sendInvites = onCall({ region: REGION }, async (request) => {
+export const sendInvites = onCall({ region: REGION, cors: true, invoker: 'public' }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'You must be signed in.');
   }

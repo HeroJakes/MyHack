@@ -261,6 +261,13 @@ function fallbackNextAction(need: RelationshipNeed) {
   return 'Send partnership invite';
 }
 
+function timestampMillis(value: unknown): number {
+  const timestamp = value as { toMillis?: () => number; seconds?: number };
+  if (typeof timestamp?.toMillis === 'function') return timestamp.toMillis();
+  if (typeof timestamp?.seconds === 'number') return timestamp.seconds * 1000;
+  return 0;
+}
+
 function fallbackSuggestions(
   contextId: string,
   needs: RelationshipNeed[],
@@ -317,7 +324,7 @@ function fallbackSuggestions(
 }
 
 export const generateParticipants = onCall(
-  { region: REGION, cors: true, timeoutSeconds: 180 },
+  { region: REGION, cors: true, invoker: 'public', timeoutSeconds: 180 },
   async (request) => {
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'You must be signed in.');
@@ -354,20 +361,26 @@ export const generateParticipants = onCall(
 
     // Independent reads run in parallel: all users, this context's invites,
     // and previous ecosystem links in the same field (the AI feedback loop).
+    // Keep the link query index-light; status filtering and sorting happen in
+    // memory so recommendation generation still works while Firestore indexes
+    // are being created or catching up after deployment.
     const [usersSnap, invitesSnap, linksSnap] = await Promise.all([
       db.collection('users').get(),
       db.collection('invites').where('contextId', '==', contextId).get(),
       db
         .collection('ecosystemLinks')
         .where('field', '==', event.field ?? '')
-        .where('status', 'in', ['active', 'completed'])
-        .orderBy('createdAt', 'desc')
-        .limit(30)
+        .limit(100)
         .get(),
     ]);
-    const previousLinks: EcosystemLink[] = linksSnap.docs.map(
-      (d) => d.data() as EcosystemLink,
-    );
+    const previousLinks: EcosystemLink[] = linksSnap.docs
+      .map((d) => d.data() as EcosystemLink)
+      .filter((link) => link.status === 'active' || link.status === 'completed')
+      .sort(
+        (a, b) =>
+          timestampMillis(b.createdAt) - timestampMillis(a.createdAt),
+      )
+      .slice(0, 30);
 
     const allUsers = usersSnap.docs.map(
       (d) => ({ id: d.id, ...d.data() }) as User,

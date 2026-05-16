@@ -54,7 +54,7 @@ interface NeedInput {
   keywords?: unknown;
 }
 
-export const createContext = onCall({ region: REGION }, async (request) => {
+export const createContext = onCall({ region: REGION, cors: true, invoker: 'public' }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Sign in required');
   }

@@ -15,7 +15,7 @@ import type { EcosystemLink, LinkFeedback } from './types';
 const REGION = 'asia-southeast1';
 
 export const submitLinkFeedback = onCall(
-  { region: REGION },
+  { region: REGION, cors: true, invoker: 'public' },
   async (request) => {
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'Sign in required');

@@ -60,7 +60,7 @@ function fallbackRelationshipNeeds(field: string): RelationshipNeed[] {
 }
 
 export const suggestRelationshipNeeds = onCall(
-  { region: REGION },
+  { region: REGION, cors: true, invoker: 'public' },
   async (request) => {
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'You must be signed in.');

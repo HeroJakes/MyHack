@@ -162,7 +162,7 @@ function normalizeProfile(parsed: any): ExtractedProfile {
 }
 
 export const extractUserProfile = onCall(
-  { region: REGION },
+  { region: REGION, cors: true, invoker: 'public' },
   async (request): Promise<ExtractedProfile> => {
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'You must be signed in.');

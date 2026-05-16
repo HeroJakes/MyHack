@@ -15,7 +15,7 @@ import type { Event, Invite } from './types';
 
 const REGION = 'asia-southeast1';
 
-export const respondToInvite = onCall({ region: REGION }, async (request) => {
+export const respondToInvite = onCall({ region: REGION, cors: true, invoker: 'public' }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'You must be signed in.');
   }
