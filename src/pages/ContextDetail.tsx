@@ -295,6 +295,9 @@ export default function ContextDetail() {
     'high',
   )
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [rejectedSuggestionIds, setRejectedSuggestionIds] = useState<Set<string>>(
+    new Set(),
+  )
   const [profileFor, setProfileFor] = useState<ParticipantSuggestion | null>(
     null,
   )
@@ -462,6 +465,7 @@ export default function ContextDetail() {
         .map((invite) => invite.invitedUserId),
     )
     let rows = suggestions
+    rows = rows.filter((s) => !rejectedSuggestionIds.has(s.id))
     rows = rows.filter((s) => !invitedOrConfirmedUserIds.has(s.userId))
     if (roleFilter !== 'All roles') {
       rows = rows.filter((s) => s.suggestedRole === roleFilter)
@@ -480,7 +484,14 @@ export default function ContextDetail() {
       rows = [...rows].sort((a, b) => a.confidence - b.confidence)
     }
     return rows
-  }, [suggestions, invites, roleFilter, search, confidenceSort])
+  }, [
+    suggestions,
+    invites,
+    roleFilter,
+    search,
+    confidenceSort,
+    rejectedSuggestionIds,
+  ])
 
   const activity = useMemo<ActivityItem[]>(() => {
     const items: ActivityItem[] = []
@@ -614,6 +625,23 @@ export default function ContextDetail() {
           err instanceof Error ? err.message : 'Failed to send invites.',
       })
     }
+  }
+
+  const handleRejectSelected = () => {
+    if (selectedIds.size === 0) return
+    setRejectedSuggestionIds((prev) => {
+      const next = new Set(prev)
+      selectedIds.forEach((id) => next.add(id))
+      return next
+    })
+    const rejectedCount = selectedIds.size
+    setSelectedIds(new Set())
+    setToast({
+      type: 'success',
+      message: `Rejected ${rejectedCount} recommendation${
+        rejectedCount === 1 ? '' : 's'
+      }.`,
+    })
   }
 
   const handleResend = async (invite: Invite) => {
@@ -885,6 +913,7 @@ export default function ContextDetail() {
                   allVisibleSelected={allVisibleSelected}
                   onToggleSelectAll={toggleSelectAll}
                   onSend={() => void handleSendSelected()}
+                  onReject={handleRejectSelected}
                   onViewProfile={setProfileFor}
                 />
               )}
@@ -1065,6 +1094,7 @@ interface AiTabProps {
   allVisibleSelected: boolean
   onToggleSelectAll: () => void
   onSend: () => void
+  onReject: () => void
   onViewProfile: (suggestion: ParticipantSuggestion) => void
 }
 
@@ -1083,6 +1113,7 @@ function AiRecommendationsTab({
   allVisibleSelected,
   onToggleSelectAll,
   onSend,
+  onReject,
   onViewProfile,
 }: AiTabProps) {
   const selectClass =
@@ -1155,6 +1186,14 @@ function AiRecommendationsTab({
           className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-blue-600 px-3 text-xs font-black text-white shadow-lg shadow-blue-500/20 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
         >
           Send Selected Invites
+        </button>
+        <button
+          type="button"
+          onClick={onReject}
+          disabled={selectedIds.size === 0}
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-red-300 bg-white px-3 text-xs font-black text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+        >
+          Reject Selected
         </button>
       </div>
 
