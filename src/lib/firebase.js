@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app'
 import { getAnalytics, isSupported } from 'firebase/analytics'
 import { getFirestore } from 'firebase/firestore'
+import { getAuth, GoogleAuthProvider } from 'firebase/auth'
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -14,6 +15,8 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig)
 const db = getFirestore(app)
+const auth = getAuth(app)
+const googleProvider = new GoogleAuthProvider()
 
 let analytics = null
 isSupported().then((supported) => {
@@ -22,4 +25,4 @@ isSupported().then((supported) => {
   }
 })
 
-export { app, db, analytics }
+export { app, db, auth, googleProvider, analytics }
