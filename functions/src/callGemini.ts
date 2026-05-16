@@ -1,5 +1,5 @@
 /**
- * Thin, reusable wrapper around Gemini 1.5 Flash.
+ * Thin, reusable wrapper around Gemini Flash.
  *
  * The GEMINI_API_KEY secret is injected into process.env only at function
  * invocation time, so the SDK is initialized lazily inside getModel() — never
@@ -12,7 +12,8 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { Part } from '@google/generative-ai';
 import { HttpsError } from 'firebase-functions/v2/https';
 
-const MODEL = 'gemini-1.5-flash';
+const DEFAULT_MODEL = 'gemini-2.5-flash';
+const DEPRECATED_MODELS = new Set(['gemini-1.5-flash']);
 
 /** A prompt is either plain text or an ordered list of multimodal parts. */
 export type GeminiPrompt = string | Array<string | Part>;
@@ -28,9 +29,21 @@ function getModel() {
   if (!apiKey) {
     throw new HttpsError('internal', 'GEMINI_API_KEY secret is not set');
   }
+  const configuredModel = process.env.GEMINI_MODEL?.trim();
+  const model =
+    configuredModel && !DEPRECATED_MODELS.has(configuredModel)
+      ? configuredModel
+      : DEFAULT_MODEL;
+
+  if (configuredModel && configuredModel !== model) {
+    console.warn(
+      `GEMINI_MODEL=${configuredModel} is deprecated; using ${model} instead.`,
+    );
+  }
+
   const genAI = new GoogleGenerativeAI(apiKey);
   return genAI.getGenerativeModel({
-    model: MODEL,
+    model,
     generationConfig: { temperature: 0, responseMimeType: 'application/json' },
   });
 }
