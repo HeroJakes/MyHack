@@ -7,15 +7,8 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as d3 from 'd3'
-<<<<<<< Updated upstream
-import { doc, onSnapshot } from 'firebase/firestore'
-import EcosystemLinkCard from './EcosystemLinkCard'
-import { db } from '../lib/firebase'
-import type { EcosystemLink } from '../types'
-=======
 import type { ResolvedEcosystemLink } from '../hooks/useEcosystemLinks'
 import { Info, Share2 } from './icons'
->>>>>>> Stashed changes
 
 interface RelationshipGraphPanelProps {
   links: ResolvedEcosystemLink[]
@@ -25,14 +18,10 @@ interface RelationshipGraphPanelProps {
 
 interface GraphNode extends d3.SimulationNodeDatum {
   id: string
-<<<<<<< Updated upstream
-  label: string
-=======
   name: string
   role: string
   type: string
   linkCount: number
->>>>>>> Stashed changes
 }
 
 interface GraphEdge extends d3.SimulationLinkDatum<GraphNode> {
@@ -162,41 +151,6 @@ export default function RelationshipGraphPanel({
   isLoading,
   onNodeClick,
 }: RelationshipGraphPanelProps) {
-<<<<<<< Updated upstream
-  const [view, setView] = useState<View>('graph')
-  const svgRef = useRef<SVGSVGElement | null>(null)
-  const profileIds = useMemo(
-    () => links.flatMap((link) => [link.sourceUserId, link.targetUserId]),
-    [links],
-  )
-  const profiles = useProfiles(profileIds)
-
-  const { nodes, edges } = useMemo(() => {
-    const nodeMap = new Map<string, GraphNode>()
-    for (const link of links) {
-      if (!nodeMap.has(link.sourceUserId)) {
-        nodeMap.set(link.sourceUserId, {
-          id: link.sourceUserId,
-          label: profiles[link.sourceUserId]?.name || 'User',
-        })
-      }
-      if (!nodeMap.has(link.targetUserId)) {
-        nodeMap.set(link.targetUserId, {
-          id: link.targetUserId,
-          label: profiles[link.targetUserId]?.name || 'User',
-        })
-      }
-    }
-    return {
-      nodes: [...nodeMap.values()],
-      edges: links.map<GraphEdge>((link) => ({
-        source: link.sourceUserId,
-        target: link.targetUserId,
-        type: link.relationshipType,
-      })),
-    }
-  }, [links, profiles])
-=======
   const wrapperRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const onNodeClickRef = useRef(onNodeClick)
@@ -211,7 +165,6 @@ export default function RelationshipGraphPanel({
     const typesPresent = [...new Set(edges.map((edge) => edge.relationshipType))]
     return { nodeCount: nodes.length, edgeCount: edges.length, typesPresent }
   }, [links])
->>>>>>> Stashed changes
 
   // Track the container width so the simulation can centre itself.
   useEffect(() => {
@@ -304,67 +257,6 @@ export default function RelationshipGraphPanel({
           .id((d) => d.id)
           .distance(120),
       )
-<<<<<<< Updated upstream
-      .force('charge', d3.forceManyBody().strength(-320))
-      .force('center', d3.forceCenter(WIDTH / 2, HEIGHT / 2))
-      .force('collide', d3.forceCollide(36))
-
-    const edgeSelection = svg
-      .append('g')
-      .attr('stroke', '#cbd5e1')
-      .attr('stroke-width', 2)
-      .selectAll('line')
-      .data(edges)
-      .join('line')
-
-    const nodeGroup = svg
-      .append('g')
-      .selectAll<SVGGElement, GraphNode>('g')
-      .data(nodes)
-      .join('g')
-      .call(
-        d3
-          .drag<SVGGElement, GraphNode>()
-          .on('start', (event, d) => {
-            if (!event.active) simulation.alphaTarget(0.3).restart()
-            d.fx = d.x
-            d.fy = d.y
-          })
-          .on('drag', (event, d) => {
-            d.fx = event.x
-            d.fy = event.y
-          })
-          .on('end', (event, d) => {
-            if (!event.active) simulation.alphaTarget(0)
-            d.fx = null
-            d.fy = null
-          }),
-      )
-
-    nodeGroup
-      .append('circle')
-      .attr('r', 22)
-      .attr('fill', '#2563eb')
-      .attr('stroke', '#fff')
-      .attr('stroke-width', 2)
-
-    nodeGroup
-      .append('text')
-      .text((d) => graphLabel(d.label))
-      .attr('text-anchor', 'middle')
-      .attr('dy', 4)
-      .attr('fill', '#fff')
-      .attr('font-size', 10)
-      .attr('font-weight', 600)
-
-    simulation.on('tick', () => {
-      edgeSelection
-        .attr('x1', (d) => linkedNode(d.source)?.x ?? 0)
-        .attr('y1', (d) => linkedNode(d.source)?.y ?? 0)
-        .attr('x2', (d) => linkedNode(d.target)?.x ?? 0)
-        .attr('y2', (d) => linkedNode(d.target)?.y ?? 0)
-      nodeGroup.attr('transform', (d) => `translate(${d.x ?? 0},${d.y ?? 0})`)
-=======
       .force('charge', d3.forceManyBody().strength(-300))
       .force('center', d3.forceCenter(width / 2, HEIGHT / 2))
       .force('collision', d3.forceCollide<GraphNode>().radius(40))
@@ -411,7 +303,6 @@ export default function RelationshipGraphPanel({
           const target = d.target as GraphNode
           return (source.y ?? 0) + ((target.y ?? 0) - (source.y ?? 0)) * t
         })
->>>>>>> Stashed changes
     })
 
     return () => {
