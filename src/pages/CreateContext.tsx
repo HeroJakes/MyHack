@@ -225,13 +225,15 @@ export default function CreateContext() {
           contextType: 'Event',
           field: String(data.field ?? ''),
           description: String(data.description ?? ''),
-          locationType: 'Physical',
-          location: '',
+          locationType: (data.locationType ?? 'Physical') as LocationType,
+          location: String(data.location ?? ''),
           startDate: date,
           endDate: date,
           status: normalizeStatus(data.status),
-          imageUrl: '',
-          targetOutcomes: [],
+          imageUrl: String(data.imageUrl ?? ''),
+          targetOutcomes: Array.isArray(data.targetOutcomes)
+            ? data.targetOutcomes.map(String)
+            : [],
           relationshipNeeds: normalizeNeeds(data.roleRequirements),
         })
         setExistingTarget({ id: eventSnap.id, collection: 'events' })

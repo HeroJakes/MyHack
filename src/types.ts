@@ -111,6 +111,10 @@ export interface EcoEvent {
   type: string;
   field: string;
   description: string;
+  locationType?: LocationType;
+  location?: string;
+  imageUrl?: string;
+  targetOutcomes?: string[];
   createdBy: string;
   roleRequirements: RelationshipNeed[];
   status: EventStatus;

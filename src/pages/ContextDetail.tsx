@@ -55,7 +55,9 @@ interface ContextView {
   contextType: string
   field: string
   description: string
+  locationType: string
   location: string
+  imageUrl: string
   status: string
   dateLabel: string
   needs: ContextNeed[]
@@ -255,7 +257,9 @@ function normalizeContext(
       contextType: String(data.contextType ?? 'Event'),
       field: String(data.field ?? '—'),
       description: String(data.description ?? ''),
+      locationType: String(data.locationType ?? 'Physical'),
       location: String(data.location ?? '').trim() || '—',
+      imageUrl: String(data.imageUrl ?? ''),
       status: String(data.status ?? 'draft'),
       dateLabel: formatRange(data.startDate, data.endDate),
       needs: normalizeNeeds(data.relationshipNeeds),
@@ -267,7 +271,9 @@ function normalizeContext(
     contextType: String(data.contextType ?? 'Event'),
     field: String(data.field ?? '—'),
     description: String(data.description ?? ''),
-    location: '—',
+    locationType: String(data.locationType ?? 'Physical'),
+    location: String(data.location ?? '').trim() || '—',
+    imageUrl: String(data.imageUrl ?? ''),
     status: String(data.status ?? 'draft'),
     dateLabel: data.eventDate ? formatDateTime(data.eventDate) : '—',
     needs: normalizeNeeds(data.roleRequirements),
@@ -821,6 +827,12 @@ export default function ContextDetail() {
               </dl>
 
               <dl className="space-y-2.5">
+                <MetaRow label="Location Type" value={readableType(context.locationType)}>
+                  <svg {...ICON} className="h-4 w-4">
+                    <path d="M3 12h18" />
+                    <path d="M12 3v18" />
+                  </svg>
+                </MetaRow>
                 <MetaRow label="Location" value={context.location}>
                   <svg {...ICON} className="h-4 w-4">
                     <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
@@ -859,6 +871,13 @@ export default function ContextDetail() {
               </dl>
 
               <div>
+                {context.imageUrl ? (
+                  <img
+                    src={context.imageUrl}
+                    alt=""
+                    className="mb-3 h-24 w-full rounded-lg object-cover ring-1 ring-slate-200"
+                  />
+                ) : null}
                 <p className="text-xs font-black text-slate-950">Description</p>
                 <p className="mt-1.5 text-xs font-medium leading-5 text-slate-600">
                   {context.description || 'No description provided.'}

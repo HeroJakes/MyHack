@@ -5,7 +5,7 @@
  */
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
-import type { Event, RelationshipNeed } from './types';
+import type { Event, LocationType, RelationshipNeed } from './types';
 
 const REGION = 'asia-southeast1';
 
@@ -14,7 +14,18 @@ export const createEvent = onCall({ region: REGION }, async (request) => {
     throw new HttpsError('unauthenticated', 'You must be signed in.');
   }
 
-  const { name, type, field, description, roleRequirements, eventDate } =
+  const {
+    name,
+    type,
+    field,
+    description,
+    locationType,
+    location,
+    imageUrl,
+    targetOutcomes,
+    roleRequirements,
+    eventDate,
+  } =
     request.data ?? {};
 
   if (!name || typeof name !== 'string') {
@@ -35,6 +46,15 @@ export const createEvent = onCall({ region: REGION }, async (request) => {
     type: typeof type === 'string' && type.trim() ? type.trim() : 'General',
     field: field.trim(),
     description: typeof description === 'string' ? description.trim() : '',
+    locationType:
+      locationType === 'Virtual' || locationType === 'Hybrid'
+        ? (locationType as LocationType)
+        : 'Physical',
+    location: typeof location === 'string' ? location.trim() : '',
+    imageUrl: typeof imageUrl === 'string' ? imageUrl : '',
+    targetOutcomes: Array.isArray(targetOutcomes)
+      ? targetOutcomes.filter((item): item is string => typeof item === 'string')
+      : [],
     createdBy: request.auth.uid,
     roleRequirements: Array.isArray(roleRequirements)
       ? (roleRequirements as RelationshipNeed[])

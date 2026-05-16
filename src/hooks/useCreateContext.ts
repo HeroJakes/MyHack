@@ -140,6 +140,10 @@ interface CreateEventFallbackInput {
   type: string
   field: string
   description: string
+  locationType: LocationType
+  location: string
+  imageUrl?: string
+  targetOutcomes: string[]
   roleRequirements: ContextRelationshipNeed[]
   eventDate?: number
 }
@@ -187,6 +191,10 @@ async function createEventFallback(payload: CreateContextInput) {
     type: payload.contextType,
     field: payload.field,
     description: payload.description,
+    locationType: payload.locationType,
+    location: payload.location,
+    imageUrl: payload.imageUrl,
+    targetOutcomes: payload.targetOutcomes,
     roleRequirements: payload.relationshipNeeds,
     eventDate: new Date(`${payload.startDate}T00:00:00`).getTime(),
   })
@@ -329,14 +337,17 @@ export function useCreateContext() {
               type: payload.contextType,
               field: payload.field,
               description: payload.description,
+              locationType: payload.locationType,
+              location: payload.location,
               status,
+              imageUrl: payload.imageUrl ?? '',
+              targetOutcomes: payload.targetOutcomes,
               eventDate: new Date(`${payload.startDate}T00:00:00`),
               roleRequirements: payload.relationshipNeeds,
+              updatedAt: serverTimestamp(),
             })
           }
           contextId = existing.id
-        } else if (payload.contextType === 'Event') {
-          contextId = await createEventFallback(payload)
         } else {
           const callable = httpsCallable<
             CreateContextInput,
