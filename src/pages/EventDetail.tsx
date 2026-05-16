@@ -23,6 +23,13 @@ import ParticipantCard from '../components/ParticipantCard'
 import EcosystemLinkCard from '../components/EcosystemLinkCard'
 import type { EcoEvent, ParticipantSuggestion } from '../types'
 
+/** Quota count tone: green when met, amber when partial, red when empty. */
+function quotaCountClass(filled: number, needed: number): string {
+  if (filled >= needed) return 'text-green-600'
+  if (filled > 0) return 'text-amber-600'
+  return 'text-red-600'
+}
+
 export default function EventDetail() {
   const { eventId } = useParams<{ eventId: string }>()
 
@@ -34,10 +41,13 @@ export default function EventDetail() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
   const {
-    generateParticipants,
-    status: genStatus,
+    generate,
+    loading: genLoading,
     error: genError,
-  } = useGenerateParticipants()
+    quotaSummary,
+    warnings,
+    fallback,
+  } = useGenerateParticipants(eventId)
   const {
     sendInvites,
     status: sendStatus,
@@ -98,14 +108,9 @@ export default function EventDetail() {
     })
   }
 
-  const handleGenerate = async () => {
-    if (!eventId) return
+  const handleGenerate = () => {
     setSelected(new Set())
-    try {
-      await generateParticipants(eventId)
-    } catch {
-      // Error surfaced via genError below.
-    }
+    generate()
   }
 
   const handleSendInvites = async () => {
@@ -208,10 +213,10 @@ export default function EventDetail() {
           <button
             type="button"
             onClick={handleGenerate}
-            disabled={genStatus === 'loading'}
+            disabled={genLoading}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {genStatus === 'loading'
+            {genLoading
               ? 'Matching…'
               : suggestions.length > 0
                 ? 'Regenerate'
@@ -219,18 +224,73 @@ export default function EventDetail() {
           </button>
         </div>
 
-        {genError && (
-          <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
-            {genError}
-          </p>
+        {/* Quota summary bar — one row per role requirement. */}
+        {quotaSummary.length > 0 && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {quotaSummary.map((quota, i) => (
+              <span
+                key={`${quota.role}-${quota.relationshipType}-${i}`}
+                className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-medium text-gray-600"
+              >
+                {quota.role}:{' '}
+                <span className={quotaCountClass(quota.filled, quota.needed)}>
+                  {quota.filled}
+                </span>
+                /{quota.needed} filled
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Warning banners. */}
+        {warnings.length > 0 && (
+          <div className="mt-3 space-y-2">
+            {warnings.map((warning, i) => (
+              <div
+                key={i}
+                className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
+              >
+                <span aria-hidden="true">⚠</span>
+                <span>{warning}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Fallback notice — AI matching was unavailable. */}
+        {fallback && (
+          <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            <span aria-hidden="true">⚠</span>
+            <span>
+              AI matching was unavailable. Showing rule-based candidates.
+              Confidence scores are estimated — review carefully before sending
+              invites.
+            </span>
+          </div>
+        )}
+
+        {/* Error state — only when there is nothing to show. */}
+        {genError && suggestions.length === 0 && (
+          <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-700">
+            <p>Matching failed: {genError}</p>
+            <button
+              type="button"
+              onClick={() => generate()}
+              className="mt-2 rounded-lg border border-red-300 px-3 py-1.5 text-sm font-semibold text-red-700 hover:bg-red-100"
+            >
+              Retry
+            </button>
+          </div>
         )}
 
         {suggestions.length === 0 ? (
-          <p className="mt-4 rounded-xl border border-dashed border-gray-300 px-4 py-8 text-center text-sm text-gray-500">
-            {genStatus === 'loading'
-              ? 'Generating suggestions…'
-              : 'No suggestions yet. Generate participants to begin.'}
-          </p>
+          genError ? null : (
+            <p className="mt-4 rounded-xl border border-dashed border-gray-300 px-4 py-8 text-center text-sm text-gray-500">
+              {genLoading
+                ? 'Generating suggestions…'
+                : 'No suggestions yet. Generate participants to begin.'}
+            </p>
+          )
         ) : (
           <>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">

@@ -56,6 +56,8 @@ export interface User {
   contributionSignals: string[];
   bio: string;
   profileCompleteness: number;
+  /** Cached one-line summary string sent to Gemini (token-efficiency cache). */
+  geminiSummary?: string;
   createdAt: TimestampValue;
   updatedAt: TimestampValue;
 }
@@ -66,6 +68,8 @@ export interface RelationshipNeed {
   count: number;
   relationshipType: RelationshipType;
   requirements: string;
+  /** Optional free-text keyword hints to sharpen AI matching for this role. */
+  keywords?: string[];
 }
 
 /**
@@ -101,7 +105,24 @@ export interface ParticipantSuggestion {
   riskFlags: string[];
   suggestedNextAction: string;
   rank: number;
+  /** True when the candidate is an extra match beyond the required quotas. */
+  bonus?: boolean;
   generatedAt: TimestampValue;
+}
+
+/** The structured envelope returned by the `generateParticipants` function. */
+export interface GenerateParticipantsResult {
+  success: boolean;
+  suggestions: ParticipantSuggestion[];
+  quotaSummary: {
+    role: string;
+    relationshipType: string;
+    needed: number;
+    filled: number;
+  }[];
+  warnings: string[];
+  error?: string;
+  fallback?: boolean;
 }
 
 /** An invitation sent to a person for a specific context + role. */
