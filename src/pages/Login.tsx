@@ -84,8 +84,8 @@ export default function Login() {
               onClick={() => switchMode('signin')}
               className={
                 mode === 'signin'
-                  ? 'border-b-4 border-[#2563eb] pb-3 text-[#2563eb]'
-                  : 'pb-3 text-[#6b7280]'
+                  ? 'cursor-pointer border-b-4 border-[#2563eb] pb-3 text-[#2563eb]'
+                  : 'cursor-pointer pb-3 text-[#6b7280]'
               }
             >
               Sign In
@@ -95,8 +95,8 @@ export default function Login() {
               onClick={() => switchMode('signup')}
               className={
                 mode === 'signup'
-                  ? 'border-b-4 border-[#2563eb] pb-3 text-[#2563eb]'
-                  : 'pb-3 text-[#6b7280]'
+                  ? 'cursor-pointer border-b-4 border-[#2563eb] pb-3 text-[#2563eb]'
+                  : 'cursor-pointer pb-3 text-[#6b7280]'
               }
             >
               Sign Up
@@ -114,7 +114,7 @@ export default function Login() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
-                className="h-11 w-full rounded-xl border border-[#d1d5db] px-4 text-sm outline-none focus:border-[#2563eb]"
+                className="h-11 w-full cursor-text rounded-xl border border-[#d1d5db] px-4 text-sm outline-none focus:border-[#2563eb]"
               />
             </div>
 
@@ -129,14 +129,14 @@ export default function Login() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="At least 6 characters"
-                className="h-11 w-full rounded-xl border border-[#d1d5db] px-4 text-sm outline-none focus:border-[#2563eb]"
+                className="h-11 w-full cursor-text rounded-xl border border-[#d1d5db] px-4 text-sm outline-none focus:border-[#2563eb]"
               />
             </div>
 
             <button
               type="submit"
               disabled={busy}
-              className="h-11 w-full rounded-xl bg-gradient-to-r from-[#1d4ed8] to-[#2563eb] text-base font-semibold text-white disabled:cursor-not-allowed disabled:opacity-70"
+              className="h-11 w-full cursor-pointer rounded-xl bg-gradient-to-r from-[#1d4ed8] to-[#2563eb] text-base font-semibold text-white disabled:cursor-not-allowed disabled:opacity-70"
             >
               {emailStatus === 'loading'
                 ? 'Please wait…'
@@ -155,7 +155,7 @@ export default function Login() {
               type="button"
               onClick={handleGoogle}
               disabled={busy}
-              className="flex h-11 w-full items-center justify-center gap-3 rounded-xl border border-[#d1d5db] text-sm font-semibold hover:bg-[#f9fafb] disabled:cursor-not-allowed disabled:opacity-70"
+              className="flex h-11 w-full cursor-pointer items-center justify-center gap-3 rounded-xl border border-[#d1d5db] text-sm font-semibold hover:bg-[#f9fafb] disabled:cursor-not-allowed disabled:opacity-70"
             >
               <img
                 src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
