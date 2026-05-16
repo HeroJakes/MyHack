@@ -108,6 +108,15 @@ function toMillis(value: unknown): number {
   return d ? d.getTime() : 0
 }
 
+function inviteIdentity(invite: Invite): string {
+  return [
+    invite.contextId,
+    invite.invitedUserId,
+    invite.assignedRole,
+    invite.relationshipType,
+  ].join('|')
+}
+
 function formatDate(value: unknown): string {
   const d = tsToDate(value)
   if (!d) return '—'
@@ -440,17 +449,29 @@ export default function ContextDetail() {
   }, [eco.data, evt.data, contextId])
   const contextMissing = eco.loaded && evt.loaded && !eco.data && !evt.data
 
+  const uniqueInvites = useMemo(() => {
+    const byIdentity = new Map<string, Invite>()
+    for (const invite of invites) {
+      const key = inviteIdentity(invite)
+      const existing = byIdentity.get(key)
+      if (!existing || toMillis(invite.sentAt) >= toMillis(existing.sentAt)) {
+        byIdentity.set(key, invite)
+      }
+    }
+    return [...byIdentity.values()].sort((a, b) => toMillis(b.sentAt) - toMillis(a.sentAt))
+  }, [invites])
+
   const inviteCounts = useMemo(() => {
     let pending = 0
     let confirmed = 0
     let declined = 0
-    for (const invite of invites) {
+    for (const invite of uniqueInvites) {
       if (invite.status === 'pending') pending += 1
       else if (invite.status === 'confirmed') confirmed += 1
       else if (invite.status === 'declined') declined += 1
     }
-    return { pending, confirmed, declined, total: invites.length }
-  }, [invites])
+    return { pending, confirmed, declined, total: uniqueInvites.length }
+  }, [uniqueInvites])
 
   const averageConfidence = useMemo(() => {
     if (suggestions.length === 0) return null
@@ -460,7 +481,7 @@ export default function ContextDetail() {
 
   const visibleSuggestions = useMemo(() => {
     const invitedOrConfirmedUserIds = new Set(
-      invites
+      uniqueInvites
         .filter((invite) => invite.status === 'pending' || invite.status === 'confirmed')
         .map((invite) => invite.invitedUserId),
     )
@@ -486,7 +507,7 @@ export default function ContextDetail() {
     return rows
   }, [
     suggestions,
-    invites,
+    uniqueInvites,
     roleFilter,
     search,
     confidenceSort,
@@ -495,7 +516,7 @@ export default function ContextDetail() {
 
   const activity = useMemo<ActivityItem[]>(() => {
     const items: ActivityItem[] = []
-    for (const invite of invites) {
+    for (const invite of uniqueInvites) {
       const name = userMap.get(invite.invitedUserId)?.name ?? 'a candidate'
       const sentAt = tsToDate(invite.sentAt)
       if (sentAt) {
@@ -542,7 +563,7 @@ export default function ContextDetail() {
       }
     }
     return items.sort((a, b) => b.at.getTime() - a.at.getTime())
-  }, [invites, suggestions, userMap])
+  }, [uniqueInvites, suggestions, userMap])
 
   // --- Actions ------------------------------------------------------------
   const toggleSelect = (id: string) => {
@@ -919,7 +940,7 @@ export default function ContextDetail() {
               )}
               {activeTab === 'invites' && (
                 <InviteTrackingTab
-                  invites={invites}
+                  invites={uniqueInvites}
                   userMap={userMap}
                   resendingId={resendingId}
                   onResend={(invite) => void handleResend(invite)}

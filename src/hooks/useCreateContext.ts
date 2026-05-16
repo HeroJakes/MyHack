@@ -135,9 +135,70 @@ interface CreateContextResult {
   contextId: string
 }
 
+interface CreateEventFallbackInput {
+  name: string
+  type: string
+  field: string
+  description: string
+  roleRequirements: ContextRelationshipNeed[]
+  eventDate?: number
+}
+
+interface CreateEventFallbackResult {
+  eventId: string
+}
+
+interface GenerateParticipantsInput {
+  contextId: string
+}
+
 export interface ExistingContextTarget {
   id: string
   collection: 'ecosystemContexts' | 'events'
+}
+
+function shouldFallbackToCreateEvent(err: unknown, payload: CreateContextInput) {
+  if (payload.contextType !== 'Event') return false
+  const text = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase()
+  return (
+    text.includes('internal') ||
+    text.includes('not-found') ||
+    text.includes('permission') ||
+    text.includes('forbidden')
+  )
+}
+
+function readableCreateError(err: unknown) {
+  const message = err instanceof Error ? err.message : ''
+  const lower = message.toLowerCase()
+  if (lower.includes('internal')) {
+    return 'The context service is not available yet. Please try again after the createContext function is deployed.'
+  }
+  return message || 'Could not create the context. Please try again.'
+}
+
+async function createEventFallback(payload: CreateContextInput) {
+  const fallback = httpsCallable<
+    CreateEventFallbackInput,
+    CreateEventFallbackResult
+  >(functions, 'createEvent')
+  const result = await fallback({
+    name: payload.name,
+    type: payload.contextType,
+    field: payload.field,
+    description: payload.description,
+    roleRequirements: payload.relationshipNeeds,
+    eventDate: new Date(`${payload.startDate}T00:00:00`).getTime(),
+  })
+  return result.data.eventId
+}
+
+async function generateRecommendations(contextId: string) {
+  const callable = httpsCallable<GenerateParticipantsInput, unknown>(
+    functions,
+    'generateParticipants',
+  )
+  await callable({ contextId })
 }
 
 export function useCreateContext() {
@@ -242,6 +303,8 @@ export function useCreateContext() {
           payload.imageUrl = formData.imageUrl
         }
 
+        let contextId: string
+
         if (existing) {
           if (existing.collection === 'ecosystemContexts') {
             await updateDoc(doc(db, 'ecosystemContexts', existing.id), {
@@ -270,21 +333,37 @@ export function useCreateContext() {
               roleRequirements: payload.relationshipNeeds,
             })
           }
-          return existing.id
+          contextId = existing.id
+        } else if (payload.contextType === 'Event') {
+          contextId = await createEventFallback(payload)
+        } else {
+          const callable = httpsCallable<
+            CreateContextInput,
+            CreateContextResult
+          >(functions, 'createContext')
+          const result = await callable(payload)
+          contextId = result.data.contextId
         }
 
-        const callable = httpsCallable<
-          CreateContextInput,
-          CreateContextResult
-        >(functions, 'createContext')
-        const result = await callable(payload)
-        return result.data.contextId
+        if (status === 'open') {
+          try {
+            await generateRecommendations(contextId)
+          } catch (generateErr) {
+            console.error('generateParticipants failed after context creation:', generateErr)
+          }
+        }
+
+        return contextId
       } catch (err) {
-        setError(
-          err instanceof Error
-            ? err.message
-            : 'Could not create the context. Please try again.',
-        )
+        if (shouldFallbackToCreateEvent(err, payload)) {
+          try {
+            return await createEventFallback(payload)
+          } catch (fallbackErr) {
+            setError(readableCreateError(fallbackErr))
+            return null
+          }
+        }
+        setError(readableCreateError(err))
         return null
       } finally {
         setLoading(false)

@@ -10,6 +10,22 @@ import type { Event, Invite } from './types';
 
 const REGION = 'asia-southeast1';
 
+function inviteDocId(
+  contextId: string,
+  invitedUserId: string,
+  assignedRole: unknown,
+  relationshipType: unknown,
+) {
+  return [
+    contextId,
+    invitedUserId,
+    String(assignedRole ?? ''),
+    String(relationshipType ?? ''),
+  ]
+    .map((part) => encodeURIComponent(part))
+    .join('__');
+}
+
 export const sendInvites = onCall({ region: REGION }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'You must be signed in.');
@@ -48,7 +64,6 @@ export const sendInvites = onCall({ region: REGION }, async (request) => {
   const batch = db.batch();
 
   const created: Invite[] = invites.map((raw: Record<string, unknown>) => {
-    const ref = db.collection('invites').doc();
     const invitedUserId = String(raw.invitedUserId ?? raw.userId ?? '');
     if (!invitedUserId) {
       throw new HttpsError(
@@ -56,6 +71,11 @@ export const sendInvites = onCall({ region: REGION }, async (request) => {
         'Every invite needs an "invitedUserId".',
       );
     }
+    const assignedRole = raw.assignedRole ?? raw.suggestedRole;
+    const relationshipType = raw.relationshipType;
+    const ref = db
+      .collection('invites')
+      .doc(inviteDocId(contextId, invitedUserId, assignedRole, relationshipType));
     const invite: Invite = {
       id: ref.id,
       contextId,
@@ -63,14 +83,14 @@ export const sendInvites = onCall({ region: REGION }, async (request) => {
       contextType: event.contextType,
       invitedUserId,
       invitedBy: uid,
-      assignedRole: (raw.assignedRole ?? raw.suggestedRole) as Invite['assignedRole'],
-      relationshipType: raw.relationshipType as Invite['relationshipType'],
+      assignedRole: assignedRole as Invite['assignedRole'],
+      relationshipType: relationshipType as Invite['relationshipType'],
       aiReason: String(raw.aiReason ?? raw.reason ?? ''),
       confidence: Math.max(0, Math.min(100, Number(raw.confidence ?? 0))),
       status: 'pending',
       sentAt,
     };
-    batch.set(ref, invite);
+    batch.set(ref, invite, { merge: true });
     return invite;
   });
 
