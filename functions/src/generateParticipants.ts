@@ -90,6 +90,18 @@ function matchingSignals(user: User, tokens: string[]): string[] {
 
 function fallbackReason(user: User, need: RelationshipNeed, tokens: string[]) {
   const signals = matchingSignals(user, tokens);
+  const matchedTokens = tokens.filter((token) =>
+    [
+      user.headline,
+      user.bio,
+      ...(user.inferredSector ?? []),
+      ...(user.inferredExpertise ?? []),
+      ...(user.contributionSignals ?? []),
+    ]
+      .join(' ')
+      .toLowerCase()
+      .includes(token),
+  );
   const signalText =
     signals.length > 0
       ? signals.join(', ')
@@ -98,8 +110,12 @@ function fallbackReason(user: User, need: RelationshipNeed, tokens: string[]) {
   const requirementText = requirement
     ? ` and fits the need for ${requirement.charAt(0).toLowerCase()}${requirement.slice(1)}`
     : '';
+  const matchText =
+    matchedTokens.length > 0
+      ? ` The match is tied to ${matchedTokens.slice(0, 3).join(', ')}.`
+      : '';
 
-  return `${user.name} is recommended for the ${need.role} role because their profile shows ${signalText}${requirementText}.`;
+  return `${user.name} is recommended for the ${need.role} role because their profile shows ${signalText}${requirementText}.${matchText}`;
 }
 
 function fallbackNextAction(need: RelationshipNeed) {
@@ -272,12 +288,36 @@ export const generateParticipants = onCall(
           suggestedRole: p.suggestedRole as ParticipantSuggestion['suggestedRole'],
           relationshipType:
             p.relationshipType as ParticipantSuggestion['relationshipType'],
-          reason: String(p.reason ?? ''),
+          reason:
+            typeof p.reason === 'string' && p.reason.trim()
+              ? p.reason.trim()
+              : matched
+                ? fallbackReason(matched, needs[idx % Math.max(needs.length, 1)] ?? {
+                    role: (p.suggestedRole ?? 'Partner') as RelationshipNeed['role'],
+                    count: 1,
+                    relationshipType:
+                      (p.relationshipType ?? 'partner_linkage') as RelationshipNeed['relationshipType'],
+                    requirements: '',
+                  }, tokens)
+                : 'This candidate matches the context needs based on their profile signals.',
           confidence: Math.max(0, Math.min(100, Number(p.confidence ?? 0))),
           riskFlags: Array.isArray(p.riskFlags)
             ? p.riskFlags.map((r: any) => String(r))
             : [],
-          suggestedNextAction: String(p.suggestedNextAction ?? 'Review candidate'),
+          suggestedNextAction:
+            typeof p.suggestedNextAction === 'string' &&
+            p.suggestedNextAction.trim() &&
+            p.suggestedNextAction.trim() !== 'Review candidate'
+              ? p.suggestedNextAction.trim()
+              : fallbackNextAction(
+                  needs[idx % Math.max(needs.length, 1)] ?? {
+                    role: (p.suggestedRole ?? 'Partner') as RelationshipNeed['role'],
+                    count: 1,
+                    relationshipType:
+                      (p.relationshipType ?? 'partner_linkage') as RelationshipNeed['relationshipType'],
+                    requirements: '',
+                  },
+                ),
           rank: Number(p.rank ?? idx + 1),
           generatedAt,
         };

@@ -26,7 +26,6 @@ import { httpsCallable } from 'firebase/functions'
 import { db, functions } from '../lib/firebase'
 import { useSendInvites } from '../hooks/useSendInvites'
 import ContextStatCards from '../components/ContextStatCards'
-import ContextSummaryPanel from '../components/ContextSummaryPanel'
 import InviteStatusBadge from '../components/InviteStatusBadge'
 import { confidenceColor } from '../lib/confidence'
 import type {
@@ -172,6 +171,32 @@ const ROLE_PILL: Record<string, string> = {
 
 function rolePillClass(role: string): string {
   return ROLE_PILL[role] ?? 'bg-gray-100 text-gray-700'
+}
+
+function recommendationReason(row: ParticipantSuggestion): string {
+  const raw = row.reason?.trim()
+  if (
+    raw &&
+    !raw.includes('Suggested from profile sector') &&
+    raw !== 'Review candidate'
+  ) {
+    return raw
+  }
+
+  const profileSignal = row.headline?.trim()
+  const role = row.suggestedRole || 'this role'
+  const relationship = row.relationshipType?.replaceAll('_', ' ')
+  return `${row.name} is recommended for ${role} because their profile${profileSignal ? ` shows ${profileSignal}` : ''} aligns with the ${relationship} need for this context.`
+}
+
+function nextActionLabel(row: ParticipantSuggestion): string {
+  const raw = row.suggestedNextAction?.trim()
+  if (raw && raw !== 'Review candidate') return raw
+  if (row.suggestedRole === 'Mentor') return 'Invite as mentor.'
+  if (row.suggestedRole === 'Partner') return 'Invite as partner.'
+  if (row.suggestedRole === 'Service Provider') return 'Invite as service provider.'
+  if (row.suggestedRole === 'Startup/Company') return 'Invite as startup.'
+  return 'Send invite.'
 }
 
 const LINK_STATUS_PILL: Record<EcosystemLinkStatus, string> = {
@@ -430,13 +455,14 @@ export default function ContextDetail() {
     return Math.round(sum / suggestions.length)
   }, [suggestions])
 
-  const topLinks = useMemo(
-    () => [...links].sort((a, b) => b.confidence - a.confidence).slice(0, 5),
-    [links],
-  )
-
   const visibleSuggestions = useMemo(() => {
+    const invitedOrConfirmedUserIds = new Set(
+      invites
+        .filter((invite) => invite.status === 'pending' || invite.status === 'confirmed')
+        .map((invite) => invite.invitedUserId),
+    )
     let rows = suggestions
+    rows = rows.filter((s) => !invitedOrConfirmedUserIds.has(s.userId))
     if (roleFilter !== 'All roles') {
       rows = rows.filter((s) => s.suggestedRole === roleFilter)
     }
@@ -454,7 +480,7 @@ export default function ContextDetail() {
       rows = [...rows].sort((a, b) => a.confidence - b.confidence)
     }
     return rows
-  }, [suggestions, roleFilter, search, confidenceSort])
+  }, [suggestions, invites, roleFilter, search, confidenceSort])
 
   const activity = useMemo<ActivityItem[]>(() => {
     const items: ActivityItem[] = []
@@ -629,7 +655,7 @@ export default function ContextDetail() {
     return (
       <div className="space-y-3">
         <Link
-          to="/dashboard"
+          to="/contexts"
           className="text-sm font-semibold text-blue-600 hover:text-blue-700"
         >
           ← My Contexts
@@ -645,31 +671,31 @@ export default function ContextDetail() {
   const needRoles = context.needs.map((n) => n.role).filter(Boolean)
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-7xl space-y-5">
       {/* ------------------------------------------------------------------ */}
       {/* TOP BAR                                                            */}
       {/* ------------------------------------------------------------------ */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <nav className="flex items-center gap-1.5 text-sm text-gray-500">
+          <nav className="flex items-center gap-1.5 text-xs font-bold text-slate-500">
             <Link
-              to="/dashboard"
-              className="font-medium text-blue-600 hover:text-blue-700"
+              to="/contexts"
+              className="text-blue-600 hover:text-blue-700"
             >
               ← My Contexts
             </Link>
             <span aria-hidden>/</span>
-            <span className="truncate text-gray-700">{context.name}</span>
+            <span className="truncate text-slate-700">{context.name}</span>
           </nav>
           <div className="mt-1 flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-black tracking-tight text-gray-950">
+            <h1 className="text-xl font-black tracking-tight text-slate-950">
               {context.name}
             </h1>
-            <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-bold text-blue-700">
+            <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-black text-blue-700 ring-1 ring-blue-100">
               {readableType(context.contextType)}
             </span>
           </div>
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="mt-1 text-xs font-medium text-slate-500">
             Manage AI recommendations, invites, and ecosystem links for this
             context.
           </p>
@@ -691,14 +717,25 @@ export default function ContextDetail() {
           </IconButton>
           <button
             type="button"
+            onClick={() => navigate(`/create-context?edit=${context.id}`)}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 text-xs font-black text-blue-600 shadow-sm transition hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          >
+            <svg {...ICON} className="h-3.5 w-3.5">
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+            </svg>
+            Edit Context Details
+          </button>
+          <button
+            type="button"
             onClick={() => void handleGenerate()}
             disabled={generating}
-            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            className="hidden"
           >
             {generating ? (
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
             ) : (
-              <svg {...ICON} className="h-4 w-4">
+              <svg {...ICON} className="h-3.5 w-3.5">
                 <path d="M12 5v14M5 12h14" />
               </svg>
             )}
@@ -708,14 +745,13 @@ export default function ContextDetail() {
       </div>
 
       {/* ------------------------------------------------------------------ */}
-      {/* TWO-COLUMN BODY                                                    */}
+      {/* BODY                                                               */}
       {/* ------------------------------------------------------------------ */}
-      <div className="lg:flex lg:gap-6">
-        <div className="min-w-0 flex-1 space-y-6">
+      <div className="space-y-5">
           {/* INFO CARD */}
-          <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-            <div className="grid gap-6 md:grid-cols-3">
-              <dl className="space-y-3">
+          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="grid gap-4 md:grid-cols-3">
+              <dl className="space-y-2.5">
                 <MetaRow label="Type" value={readableType(context.contextType)}>
                   <svg {...ICON} className="h-4 w-4">
                     <circle cx="12" cy="12" r="9" />
@@ -735,7 +771,7 @@ export default function ContextDetail() {
                 </MetaRow>
               </dl>
 
-              <dl className="space-y-3">
+              <dl className="space-y-2.5">
                 <MetaRow label="Location" value={context.location}>
                   <svg {...ICON} className="h-4 w-4">
                     <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
@@ -749,12 +785,12 @@ export default function ContextDetail() {
                     </svg>
                   </span>
                   <div>
-                    <dt className="text-xs font-semibold text-gray-500">
+                    <dt className="text-[11px] font-bold text-slate-500">
                       Status
                     </dt>
                     <dd className="mt-0.5">
                       <span
-                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${status.classes}`}
+                        className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-black ${status.classes}`}
                       >
                         {status.label}
                       </span>
@@ -774,8 +810,8 @@ export default function ContextDetail() {
               </dl>
 
               <div>
-                <p className="text-sm font-bold text-gray-900">Description</p>
-                <p className="mt-1.5 text-sm leading-relaxed text-gray-600">
+                <p className="text-xs font-black text-slate-950">Description</p>
+                <p className="mt-1.5 text-xs font-medium leading-5 text-slate-600">
                   {context.description || 'No description provided.'}
                 </p>
               </div>
@@ -784,8 +820,8 @@ export default function ContextDetail() {
 
           {/* ERROR BANNER — directly under the info card */}
           {errors.length > 0 && (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              <p className="font-semibold">Some data could not be loaded</p>
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">
+              <p className="font-black">Some data could not be loaded</p>
               <ul className="mt-1 list-inside list-disc space-y-0.5">
                 {errors.map((message) => (
                   <li key={message}>{message}</li>
@@ -808,7 +844,7 @@ export default function ContextDetail() {
             <div
               role="tablist"
               aria-label="Context detail sections"
-              className="flex flex-wrap gap-1 border-b border-gray-200"
+              className="flex flex-wrap gap-1 border-b border-slate-200"
             >
               {TABS.map((tab) => {
                 const active = activeTab === tab.key
@@ -819,7 +855,7 @@ export default function ContextDetail() {
                     role="tab"
                     aria-selected={active}
                     onClick={() => setActiveTab(tab.key)}
-                    className={`-mb-px flex items-center gap-1.5 border-b-2 px-3.5 py-2.5 text-sm font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+                    className={`-mb-px flex items-center gap-1.5 border-b-2 px-3 py-2 text-xs font-black transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
                       active
                         ? 'border-blue-600 text-blue-700'
                         : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -832,7 +868,7 @@ export default function ContextDetail() {
               })}
             </div>
 
-            <div className="mt-5">
+            <div className="mt-3">
               {activeTab === 'ai' && (
                 <AiRecommendationsTab
                   loading={suggestionsLoading}
@@ -868,19 +904,6 @@ export default function ContextDetail() {
               )}
             </div>
           </div>
-        </div>
-
-        {/* RIGHT PANEL */}
-        <ContextSummaryPanel
-          pending={inviteCounts.pending}
-          confirmed={inviteCounts.confirmed}
-          declined={inviteCounts.declined}
-          totalInvites={inviteCounts.total}
-          topLinks={topLinks}
-          userMap={userMap}
-          onEditContext={() => navigate('/create-context')}
-          onViewAllLinks={() => setActiveTab('links')}
-        />
       </div>
 
       {/* PROFILE MODAL */}
@@ -934,7 +957,7 @@ function IconButton({
     <button
       type="button"
       aria-label={label}
-      className="grid h-9 w-9 place-items-center rounded-xl border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+      className="grid h-8 w-8 place-items-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm hover:bg-slate-50 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
     >
       {children}
     </button>
@@ -954,8 +977,8 @@ function MetaRow({
     <div className="flex items-start gap-2">
       <span className="mt-0.5 text-gray-400">{children}</span>
       <div className="min-w-0">
-        <dt className="text-xs font-semibold text-gray-500">{label}</dt>
-        <dd className="mt-0.5 text-sm text-gray-900">{value}</dd>
+        <dt className="text-[11px] font-bold text-slate-500">{label}</dt>
+        <dd className="mt-0.5 text-xs font-medium text-slate-900">{value}</dd>
       </div>
     </div>
   )
@@ -1063,23 +1086,23 @@ function AiRecommendationsTab({
   onViewProfile,
 }: AiTabProps) {
   const selectClass =
-    'h-9 rounded-lg border border-gray-300 bg-white px-2.5 text-sm text-gray-700 focus:border-blue-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500'
+    'h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-700 focus:border-blue-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500'
 
   return (
-    <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-      <header>
-        <h3 className="text-base font-bold text-gray-950">
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <header className="px-4 pt-4">
+        <h3 className="text-sm font-black text-slate-950">
           AI Recommendation Results
         </h3>
-        <p className="mt-0.5 text-sm text-gray-500">
+        <p className="mt-0.5 text-xs font-medium text-slate-500">
           Ranked suggestions based on context data, candidate profiles,
           previous links, and Gemini reasoning.
         </p>
       </header>
 
       {/* Filter / action row */}
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <div className="flex h-9 min-w-[200px] flex-1 items-center rounded-lg border border-gray-300 bg-white px-2.5 focus-within:border-blue-500">
+      <div className="mt-3 flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 pb-3">
+        <div className="flex h-8 min-w-[200px] flex-1 items-center rounded-lg border border-slate-200 bg-white px-2.5 focus-within:border-blue-500">
           <svg {...ICON} className="h-4 w-4 text-gray-400">
             <circle cx="11" cy="11" r="7" />
             <path d="m21 21-4.3-4.3" />
@@ -1089,7 +1112,7 @@ function AiRecommendationsTab({
             onChange={(e) => onSearch(e.target.value)}
             placeholder="Search candidates"
             aria-label="Search candidates"
-            className="ml-2 min-w-0 flex-1 bg-transparent text-sm text-gray-800 outline-none"
+            className="ml-2 min-w-0 flex-1 bg-transparent text-xs font-medium text-slate-800 outline-none"
           />
         </div>
         <select
@@ -1116,7 +1139,7 @@ function AiRecommendationsTab({
           <option value="low">Low to High</option>
           <option value="all">All</option>
         </select>
-        <label className="flex items-center gap-1.5 text-sm font-medium text-gray-600">
+        <label className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-600">
           <input
             type="checkbox"
             checked={allVisibleSelected}
@@ -1129,38 +1152,38 @@ function AiRecommendationsTab({
           type="button"
           onClick={onSend}
           disabled={selectedIds.size === 0}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-blue-600 px-3 text-xs font-black text-white shadow-lg shadow-blue-500/20 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
         >
           Send Selected Invites
         </button>
       </div>
 
       {/* Table */}
-      <div className="mt-4 overflow-x-auto">
-        <table className="w-full min-w-[920px] text-left text-sm">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[900px] text-left text-xs">
           <thead>
-            <tr className="border-b border-gray-100 text-[11px] font-bold uppercase tracking-wider text-gray-500">
-              <th className="w-8 py-2" />
-              <th className="py-2 pr-3">Candidate</th>
-              <th className="py-2 pr-3">Role</th>
-              <th className="py-2 pr-3">Relationship Type</th>
-              <th className="py-2 pr-3">Confidence</th>
-              <th className="py-2 pr-3">AI Reason &amp; Risk Flags</th>
-              <th className="py-2">Next Action</th>
+            <tr className="border-b border-slate-100 text-[10px] font-black text-slate-500">
+              <th className="w-8 px-4 py-2" />
+              <th className="px-2 py-2">Candidate</th>
+              <th className="px-2 py-2">Role</th>
+              <th className="px-2 py-2">Relationship Type</th>
+              <th className="px-2 py-2">Confidence</th>
+              <th className="px-2 py-2">AI Reason &amp; Risk Flags</th>
+              <th className="px-2 py-2">Next Action</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               [0, 1, 2].map((i) => (
-                <tr key={i} className="border-b border-gray-50">
-                  <td colSpan={7} className="py-3">
+                <tr key={i} className="border-b border-slate-100">
+                  <td colSpan={7} className="px-4 py-3">
                     <div className="h-10 animate-pulse rounded-lg bg-gray-100" />
                   </td>
                 </tr>
               ))
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-6">
+                <td colSpan={7} className="px-4 py-6">
                   <EmptyState
                     message={
                       totalCount === 0
@@ -1174,9 +1197,9 @@ function AiRecommendationsTab({
               rows.map((row) => (
                 <tr
                   key={row.id}
-                  className="border-b border-gray-50 align-top"
+                  className="border-b border-slate-100 align-top transition hover:bg-slate-50"
                 >
-                  <td className="py-3">
+                  <td className="px-4 py-3">
                     <input
                       type="checkbox"
                       checked={selectedIds.has(row.id)}
@@ -1185,46 +1208,48 @@ function AiRecommendationsTab({
                       className="h-4 w-4 rounded border-gray-300 accent-blue-600"
                     />
                   </td>
-                  <td className="py-3 pr-3">
+                  <td className="px-2 py-3">
                     <div className="flex items-start gap-2.5">
                       <Avatar name={row.name} photoURL={row.photoURL} />
                       <div className="min-w-0">
-                        <p className="font-semibold text-gray-900">
+                        <p className="font-black text-slate-950">
                           {row.name}
                         </p>
-                        <p className="text-xs text-gray-500">
+                        <p className="text-[11px] font-medium text-slate-500">
                           {row.headline || 'No headline'}
                         </p>
                       </div>
                     </div>
                   </td>
-                  <td className="py-3 pr-3">
+                  <td className="px-2 py-3">
                     <span
-                      className={`inline-flex rounded-md px-2 py-0.5 text-xs font-semibold ${rolePillClass(
+                      className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-black ${rolePillClass(
                         row.suggestedRole,
                       )}`}
                     >
                       {row.suggestedRole}
                     </span>
                   </td>
-                  <td className="py-3 pr-3">
-                    <span className="inline-flex rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+                  <td className="px-2 py-3">
+                    <span className="inline-flex rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-black text-slate-600">
                       {row.relationshipType}
                     </span>
                   </td>
-                  <td className="py-3 pr-3">
+                  <td className="px-2 py-3">
                     <span
-                      className={`text-sm font-bold ${confidenceColor(
+                      className={`text-xs font-black ${confidenceColor(
                         row.confidence,
                       )}`}
                     >
                       {row.confidence}%
                     </span>
                   </td>
-                  <td className="max-w-xs py-3 pr-3">
-                    <p className="text-xs text-gray-700">{row.reason}</p>
-                    <p className="mt-1 text-xs">
-                      <span className="font-semibold text-gray-500">
+                  <td className="max-w-sm px-2 py-3">
+                    <p className="text-xs font-medium text-slate-700">
+                      {recommendationReason(row)}
+                    </p>
+                    <p className="mt-1 text-[11px]">
+                      <span className="font-black text-slate-500">
                         Risk Flags:{' '}
                       </span>
                       {row.riskFlags.length === 0 ? (
@@ -1238,14 +1263,14 @@ function AiRecommendationsTab({
                       )}
                     </p>
                   </td>
-                  <td className="py-3">
-                    <p className="text-xs text-gray-700">
-                      {row.suggestedNextAction}
+                  <td className="px-2 py-3">
+                    <p className="text-xs font-bold text-slate-700">
+                      {nextActionLabel(row)}
                     </p>
                     <button
                       type="button"
                       onClick={() => onViewProfile(row)}
-                      className="mt-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                      className="mt-1.5 rounded-lg border border-blue-200 px-2 py-1 text-[11px] font-black text-blue-600 hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                     >
                       View Profile
                     </button>

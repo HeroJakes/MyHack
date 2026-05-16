@@ -6,8 +6,9 @@
  * Firestore directly) and returns the new contextId.
  */
 import { useCallback, useMemo, useState } from 'react'
+import { doc, serverTimestamp, updateDoc } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
-import { functions } from '../lib/firebase'
+import { db, functions } from '../lib/firebase'
 import type { RelationshipRole, RelationshipType } from '../types'
 
 export type ContextType =
@@ -134,6 +135,11 @@ interface CreateContextResult {
   contextId: string
 }
 
+export interface ExistingContextTarget {
+  id: string
+  collection: 'ecosystemContexts' | 'events'
+}
+
 export function useCreateContext() {
   const [formData, setFormData] = useState<ContextFormData>(freshForm)
   const [loading, setLoading] = useState(false)
@@ -145,6 +151,10 @@ export function useCreateContext() {
     },
     [],
   )
+
+  const replaceForm = useCallback((next: ContextFormData) => {
+    setFormData(next)
+  }, [])
 
   const addNeed = useCallback(() => {
     setFormData((prev) => ({
@@ -194,7 +204,10 @@ export function useCreateContext() {
   )
 
   const submit = useCallback(
-    async (status: ContextStatus): Promise<string | null> => {
+    async (
+      status: ContextStatus,
+      existing?: ExistingContextTarget | null,
+    ): Promise<string | null> => {
       setError(null)
 
       // Required-field validation (the checklist) gates both buttons.
@@ -229,6 +242,37 @@ export function useCreateContext() {
           payload.imageUrl = formData.imageUrl
         }
 
+        if (existing) {
+          if (existing.collection === 'ecosystemContexts') {
+            await updateDoc(doc(db, 'ecosystemContexts', existing.id), {
+              name: payload.name,
+              contextType: payload.contextType,
+              field: payload.field,
+              description: payload.description,
+              locationType: payload.locationType,
+              location: payload.location,
+              startDate: new Date(`${payload.startDate}T00:00:00`),
+              endDate: new Date(`${payload.endDate}T00:00:00`),
+              status,
+              imageUrl: payload.imageUrl ?? '',
+              targetOutcomes: payload.targetOutcomes,
+              relationshipNeeds: payload.relationshipNeeds,
+              updatedAt: serverTimestamp(),
+            })
+          } else {
+            await updateDoc(doc(db, 'events', existing.id), {
+              name: payload.name,
+              type: payload.contextType,
+              field: payload.field,
+              description: payload.description,
+              status,
+              eventDate: new Date(`${payload.startDate}T00:00:00`),
+              roleRequirements: payload.relationshipNeeds,
+            })
+          }
+          return existing.id
+        }
+
         const callable = httpsCallable<
           CreateContextInput,
           CreateContextResult
@@ -252,6 +296,7 @@ export function useCreateContext() {
   return {
     formData,
     setField,
+    replaceForm,
     relationshipNeeds: formData.relationshipNeeds,
     addNeed,
     updateNeed,

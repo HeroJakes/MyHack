@@ -15,12 +15,16 @@ import type {
   KeyboardEvent,
   ReactNode,
 } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { doc, getDoc } from 'firebase/firestore'
 import RoleRequirementForm from '../components/RoleRequirementForm'
+import { db } from '../lib/firebase'
 import { useCreateContext } from '../hooks/useCreateContext'
 import type {
+  ContextFormData,
   ContextRelationshipNeed,
   ContextType,
+  ExistingContextTarget,
   LocationType,
   ValidationKey,
 } from '../hooks/useCreateContext'
@@ -113,11 +117,44 @@ function suggestedOutcomes(field: string): string[] {
   ]
 }
 
+function toDateInputValue(value: unknown): string {
+  if (!value) return ''
+  const maybeTimestamp = value as { toDate?: () => Date; seconds?: number }
+  let date: Date | null = null
+  if (typeof maybeTimestamp.toDate === 'function') {
+    date = maybeTimestamp.toDate()
+  } else if (typeof maybeTimestamp.seconds === 'number') {
+    date = new Date(maybeTimestamp.seconds * 1000)
+  } else if (value instanceof Date) {
+    date = value
+  }
+  if (!date || Number.isNaN(date.getTime())) return ''
+  return date.toISOString().slice(0, 10)
+}
+
+function normalizeStatus(value: unknown): 'draft' | 'open' {
+  return value === 'draft' ? 'draft' : 'open'
+}
+
+function normalizeNeeds(value: unknown): ContextRelationshipNeed[] {
+  if (!Array.isArray(value)) return []
+  return value.map((need) => ({
+    role: need.role || 'Mentor',
+    count: Math.max(1, Number(need.count ?? 1)),
+    relationshipType: need.relationshipType || 'mentor_match',
+    requirements: need.requirements || '',
+    keywords: Array.isArray(need.keywords) ? need.keywords : [],
+  })) as ContextRelationshipNeed[]
+}
+
 export default function CreateContext() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const editId = searchParams.get('edit')
   const {
     formData,
     setField,
+    replaceForm,
     relationshipNeeds,
     addNeed,
     updateNeed,
@@ -129,6 +166,8 @@ export default function CreateContext() {
     error,
     submit,
   } = useCreateContext()
+  const [existingTarget, setExistingTarget] = useState<ExistingContextTarget | null>(null)
+  const [editLoading, setEditLoading] = useState(false)
 
   const { suggestNeeds, status: suggestStatus } = useSuggestRelationshipNeeds()
 
@@ -138,6 +177,73 @@ export default function CreateContext() {
   const [customOutcome, setCustomOutcome] = useState('')
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!editId) {
+      setExistingTarget(null)
+      return
+    }
+
+    let cancelled = false
+    setEditLoading(true)
+
+    async function loadContextForEdit() {
+      const ecoSnap = await getDoc(doc(db, 'ecosystemContexts', editId as string))
+      if (cancelled) return
+
+      if (ecoSnap.exists()) {
+        const data = ecoSnap.data()
+        const next: ContextFormData = {
+          name: String(data.name ?? ''),
+          contextType: (data.contextType ?? 'Event') as ContextType,
+          field: String(data.field ?? ''),
+          description: String(data.description ?? ''),
+          locationType: (data.locationType ?? 'Physical') as LocationType,
+          location: String(data.location ?? ''),
+          startDate: toDateInputValue(data.startDate),
+          endDate: toDateInputValue(data.endDate),
+          status: normalizeStatus(data.status),
+          imageUrl: String(data.imageUrl ?? ''),
+          targetOutcomes: Array.isArray(data.targetOutcomes)
+            ? data.targetOutcomes.map(String)
+            : [],
+          relationshipNeeds: normalizeNeeds(data.relationshipNeeds),
+        }
+        replaceForm(next)
+        setExistingTarget({ id: ecoSnap.id, collection: 'ecosystemContexts' })
+        setEditLoading(false)
+        return
+      }
+
+      const eventSnap = await getDoc(doc(db, 'events', editId as string))
+      if (cancelled) return
+      if (eventSnap.exists()) {
+        const data = eventSnap.data()
+        const date = toDateInputValue(data.eventDate)
+        replaceForm({
+          name: String(data.name ?? ''),
+          contextType: 'Event',
+          field: String(data.field ?? ''),
+          description: String(data.description ?? ''),
+          locationType: 'Physical',
+          location: '',
+          startDate: date,
+          endDate: date,
+          status: normalizeStatus(data.status),
+          imageUrl: '',
+          targetOutcomes: [],
+          relationshipNeeds: normalizeNeeds(data.roleRequirements),
+        })
+        setExistingTarget({ id: eventSnap.id, collection: 'events' })
+      }
+      setEditLoading(false)
+    }
+
+    void loadContextForEdit().catch(() => setEditLoading(false))
+    return () => {
+      cancelled = true
+    }
+  }, [editId, replaceForm])
 
   const suggestions = useMemo(
     () => suggestedOutcomes(formData.field),
@@ -258,7 +364,7 @@ export default function CreateContext() {
   // --- Submit / cancel ----------------------------------------------------
 
   const handleSubmit = async (status: 'draft' | 'open') => {
-    const contextId = await submit(status)
+    const contextId = await submit(status, existingTarget)
     if (contextId) navigate(`/contexts/${contextId}`)
   }
 
@@ -275,10 +381,12 @@ export default function CreateContext() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-black tracking-tight text-gray-950">
-            Create Context
+            {existingTarget ? 'Edit Context' : 'Create Context'}
           </h1>
           <p className="mt-1 text-sm text-gray-500">
-            Create an ecosystem context and define relationship needs.
+            {existingTarget
+              ? 'Update this context and its relationship needs.'
+              : 'Create an ecosystem context and define relationship needs.'}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -313,11 +421,17 @@ export default function CreateContext() {
                 <polyline points="7 3 7 8 15 8" />
               </svg>
             )}
-            Save as Draft
+            {existingTarget ? 'Save Draft' : 'Save as Draft'}
           </button>
         </div>
       </div>
 
+      {editLoading ? (
+        <div className="mt-6 flex items-center gap-3 rounded-2xl border border-gray-100 bg-white px-5 py-8 text-sm font-semibold text-gray-500 shadow-sm">
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-200 border-t-blue-600" />
+          Loading context details...
+        </div>
+      ) : (
       <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
         {/* Main column */}
         <div className="space-y-6">
@@ -647,7 +761,13 @@ export default function CreateContext() {
                 className={`inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-500/20 transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING}`}
               >
                 {submitting ? <Spinner /> : null}
-                {submitting ? 'Creating…' : 'Create & Generate'}
+                {submitting
+                  ? existingTarget
+                    ? 'Saving...'
+                    : 'Creating...'
+                  : existingTarget
+                    ? 'Save Changes'
+                    : 'Create & Generate'}
                 {!submitting && <span aria-hidden>→</span>}
               </button>
             </div>
@@ -841,6 +961,7 @@ export default function CreateContext() {
           </section>
         </aside>
       </div>
+      )}
 
       {/* Unsaved-changes confirmation */}
       {showLeaveConfirm && (

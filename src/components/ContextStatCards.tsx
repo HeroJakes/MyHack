@@ -103,21 +103,21 @@ export default function ContextStatCards({
   ]
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
       {items.map((item) => (
         <div
           key={item.key}
-          className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm"
+          className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
         >
           <span
-            className={`grid h-9 w-9 place-items-center rounded-lg ${item.tone}`}
+            className={`grid h-8 w-8 place-items-center rounded-full ${item.tone}`}
           >
             {item.icon}
           </span>
-          <p className="mt-3 text-2xl font-black tracking-tight text-gray-950">
+          <p className="mt-2 text-xl font-black tracking-tight text-slate-950">
             {item.value}
           </p>
-          <p className="text-xs font-medium text-gray-500">{item.label}</p>
+          <p className="text-[11px] font-bold text-slate-500">{item.label}</p>
         </div>
       ))}
     </div>
