@@ -1,8 +1,34 @@
-import { useMemo, useState } from 'react'
-import { Link, Navigate, Route, Routes } from 'react-router-dom'
-import { createUserWithEmailAndPassword, signInWithPopup } from 'firebase/auth'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithPopup, signOut } from 'firebase/auth'
 import { auth, googleProvider } from './lib/firebase'
 import googleLogo from './assets/google.svg'
+
+function getAuthErrorMessage(error) {
+  const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : ''
+
+  switch (code) {
+    case 'auth/email-already-in-use':
+      return 'This email is already registered. Please log in instead.'
+    case 'auth/invalid-email':
+      return 'Please enter a valid email address.'
+    case 'auth/weak-password':
+      return 'Password is too weak. Use at least 6 characters with letters, numbers, and symbols.'
+    case 'auth/user-not-found':
+      return 'No account found with this email.'
+    case 'auth/wrong-password':
+    case 'auth/invalid-credential':
+      return 'Incorrect email or password.'
+    case 'auth/too-many-requests':
+      return 'Too many attempts. Please wait a moment and try again.'
+    case 'auth/popup-closed-by-user':
+      return 'Sign-in popup was closed before completing.'
+    case 'auth/network-request-failed':
+      return 'Network error. Please check your connection and try again.'
+    default:
+      return 'Something went wrong. Please try again.'
+  }
+}
 
 function AuthLayout({ subtitle, children }) {
   return (
@@ -57,10 +83,52 @@ function GoogleButton({ loading, onClick }) {
   )
 }
 
+function ErrorToast({ message }) {
+  const [visible, setVisible] = useState(false)
+
+  useEffect(() => {
+    if (!message) return
+    setVisible(true)
+    const timer = setTimeout(() => setVisible(false), 3800)
+    return () => clearTimeout(timer)
+  }, [message])
+
+  if (!message) return null
+
+  return (
+    <div className="pointer-events-none fixed inset-x-0 top-4 z-50 flex justify-center px-4">
+      <div
+        className={`w-full max-w-[920px] rounded-2xl border border-[#f2a7a7] bg-[#ea9a9a] px-8 py-6 text-[18px] font-medium text-white shadow-[0_12px_35px_rgba(234,154,154,0.35)] transition-all duration-300 ${
+          visible ? 'translate-y-0 opacity-100' : '-translate-y-5 opacity-0'
+        }`}
+      >
+        Error: {message}
+      </div>
+    </div>
+  )
+}
+
 function LoginPage() {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [loadingEmail, setLoadingEmail] = useState(false)
   const [loadingGoogle, setLoadingGoogle] = useState(false)
   const [authError, setAuthError] = useState('')
   const [signedInUser, setSignedInUser] = useState(null)
+
+  const handleEmailSignIn = async (event) => {
+    event.preventDefault()
+    setLoadingEmail(true)
+    setAuthError('')
+    try {
+      const result = await signInWithEmailAndPassword(auth, email, password)
+      setSignedInUser(result.user)
+    } catch (error) {
+      setAuthError(getAuthErrorMessage(error))
+    } finally {
+      setLoadingEmail(false)
+    }
+  }
 
   const handleGoogleSignIn = async () => {
     setLoadingGoogle(true)
@@ -69,7 +137,7 @@ function LoginPage() {
       const result = await signInWithPopup(auth, googleProvider)
       setSignedInUser(result.user)
     } catch (error) {
-      setAuthError(error.message || 'Google sign-in failed.')
+      setAuthError(getAuthErrorMessage(error))
     } finally {
       setLoadingGoogle(false)
     }
@@ -77,15 +145,19 @@ function LoginPage() {
 
   return (
     <AuthLayout subtitle="Log in to your account">
+      <ErrorToast message={authError} />
       <GoogleButton loading={loadingGoogle} onClick={handleGoogleSignIn} />
 
       <div className="my-6 h-px w-full bg-[#dedede]" />
 
-      <form className="space-y-5">
+      <form className="space-y-5" onSubmit={handleEmailSignIn}>
         <div>
           <label className="mb-2 block text-[16px] font-semibold text-[#1d1d1d]">Email</label>
           <input
             type="email"
+            required
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
             placeholder="Enter your email address..."
             className="h-[46px] w-full cursor-text rounded-lg border border-[#d9d9d9] px-4 text-[17px] text-[#4f4f4f] outline-none placeholder:text-[#a0a0a0] focus:border-[#2f80ed]"
           />
@@ -96,6 +168,9 @@ function LoginPage() {
           <div className="flex h-[46px] items-center rounded-lg border border-[#d9d9d9] px-4 focus-within:border-[#2f80ed]">
             <input
               type="password"
+              required
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
               placeholder="Enter your password"
               className="h-full w-full cursor-text border-none text-[17px] text-[#4f4f4f] outline-none placeholder:text-[#a0a0a0]"
             />
@@ -117,10 +192,11 @@ function LoginPage() {
         </div>
 
         <button
-          type="button"
-          className="mt-1 h-[50px] w-full cursor-pointer rounded-lg bg-gradient-to-r from-[#1e73e8] to-[#1971e9] text-[18px] font-semibold text-white"
+          type="submit"
+          disabled={loadingEmail || loadingGoogle}
+          className="mt-1 h-[50px] w-full cursor-pointer rounded-lg bg-gradient-to-r from-[#1e73e8] to-[#1971e9] text-[18px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-70"
         >
-          Sign In
+          {loadingEmail ? 'Signing in...' : 'Sign In'}
         </button>
       </form>
 
@@ -139,12 +215,12 @@ function LoginPage() {
           Signed in as {signedInUser.displayName || signedInUser.email}
         </p>
       )}
-      {authError && <p className="mt-4 text-center text-sm text-red-600">{authError}</p>}
     </AuthLayout>
   )
 }
 
 function SignUpPage() {
+  const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -160,9 +236,13 @@ function SignUpPage() {
     setMessage('')
     try {
       await signInWithPopup(auth, googleProvider)
-      setMessage('Account created successfully.')
+      setEmail('')
+      setPassword('')
+      setConfirmPassword('')
+      await signOut(auth)
+      navigate('/login', { replace: true })
     } catch (error) {
-      setMessage(error.message || 'Google sign-up failed.')
+      setMessage(getAuthErrorMessage(error))
     } finally {
       setLoadingGoogle(false)
     }
@@ -180,9 +260,13 @@ function SignUpPage() {
     setLoading(true)
     try {
       await createUserWithEmailAndPassword(auth, email, password)
-      setMessage('Account created successfully.')
+      setEmail('')
+      setPassword('')
+      setConfirmPassword('')
+      await signOut(auth)
+      navigate('/login', { replace: true })
     } catch (error) {
-      setMessage(error.message || 'Could not create account.')
+      setMessage(getAuthErrorMessage(error))
     } finally {
       setLoading(false)
     }
@@ -190,6 +274,7 @@ function SignUpPage() {
 
   return (
     <AuthLayout subtitle="Create your account">
+      <ErrorToast message={message} />
       <GoogleButton loading={loadingGoogle} onClick={handleGoogleSignUp} />
 
       <div className="my-5 h-px w-full bg-[#dedede]" />
@@ -262,11 +347,6 @@ function SignUpPage() {
         <span className="text-[#1f74e8]">Privacy Policy</span>.
       </p>
 
-      {message && (
-        <p className={`mt-4 text-center text-sm ${message.includes('successfully') ? 'text-green-600' : 'text-red-600'}`}>
-          {message}
-        </p>
-      )}
     </AuthLayout>
   )
 }
