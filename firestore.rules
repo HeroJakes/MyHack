@@ -1,0 +1,60 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function eventCreatedBy(contextId) {
+      return get(/databases/$(database)/documents/events/$(contextId)).data.createdBy;
+    }
+
+    // Users: anyone signed in can read profiles; you may only write your own.
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Events: readable by any signed-in user. The organizer owns updates/deletes.
+    match /events/{eventId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn() && resource.data.createdBy == request.auth.uid;
+    }
+
+    // AI participant suggestions: visible only to the event organizer, written by backend only.
+    match /suggestions/{contextId} {
+      allow read: if isSignedIn() && eventCreatedBy(contextId) == request.auth.uid;
+      allow write: if false;
+
+      match /participants/{participantId} {
+        allow read: if isSignedIn() && eventCreatedBy(contextId) == request.auth.uid;
+        allow write: if false;
+      }
+    }
+
+    // Invites: visible to the invitee and the organizer. Created by backend only.
+    // The invitee may only update status / respondedAt / declineReason.
+    match /invites/{inviteId} {
+      allow read: if isSignedIn()
+        && (resource.data.invitedUserId == request.auth.uid
+            || resource.data.invitedBy == request.auth.uid);
+      allow create: if false;
+      allow update: if isSignedIn()
+        && resource.data.invitedUserId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['status', 'respondedAt', 'declineReason']);
+      allow delete: if false;
+    }
+
+    // Ecosystem links: visible to the two linked actors. Mutated by backend only.
+    match /ecosystemLinks/{linkId} {
+      allow read: if isSignedIn()
+        && (resource.data.sourceUserId == request.auth.uid
+            || resource.data.targetUserId == request.auth.uid);
+      allow create, update, delete: if false;
+    }
+  }
+}
